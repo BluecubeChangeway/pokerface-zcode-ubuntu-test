@@ -4,6 +4,7 @@ import { computeFullPathRevocationImpact, isBusinessRevoked } from "../domain/wo
 import type { Recommendation } from "../domain/recommendation/types";
 import type { ResolutionRecommendation } from "../domain/workload/resolutionTypes";
 import { recommendationStore } from "../stores/recommendationStore";
+import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
 import {
   executeSplitLayerRevocation,
   executeFullPathRevocation,
@@ -168,6 +169,8 @@ export async function revokeDerivedPathAsPreviewed(
   await submitRevocation(current, dataService);
   // D-151 A①：撤回提交成功后，按当前事实状态失效旧反馈（预览/取消/守卫拒绝均不触达此处）
   await invalidateStaleResolutionFeedback(dataService);
+  // D-151 剩余①（假设 A-001）：全路径撤回 = "整条错误路径全错了"意图——
+  // 不自动重推任何配对；用户把卡拖到正确 Unit 时 D-150 自然触发 Resolution
   return current;
 }
 
@@ -183,7 +186,92 @@ export async function revokeDerivedPath(
   const impact = await executeFullPathRevocation(dataService, entryWorkloadCardId);
   // D-151 A①：撤回提交成功后失效旧反馈（空 impact 重跑时亦按实时事实收敛）
   await invalidateStaleResolutionFeedback(dataService);
+  // D-151 剩余①（假设 A-001）：全路径撤回不自动重推任何配对（同守卫入口）
   return impact;
+}
+
+/**
+ * 撤回后自动重新 Resolution 的配对（D-151 剩余①；假设 A-001，见
+ * AGENT/DECISIONS-AND-ASSUMPTIONS.md——配对范围属产品待澄清项，按假设协议推进并呈报复核）。
+ */
+export interface ResubmittedResolutionPair {
+  workloadCardId: string;
+  targetUnitId: string;
+}
+
+/**
+ * D-151 剩余①（撤回后自动重新 Resolution）：层撤回提交成功后，对父卡的
+ * 全部 active workload_assign 配对自动重新执行 Resolution。
+ *
+ * 语义边界（对应 D-151 / D-142 / D-150 / D-153，假设 A-001 不扩大）：
+ * - "自动"只表示自动重新分析和推荐（A① 失效在前、重推在后）——绝不自动执行
+ *   Split / Aggregate / Assign 等业务动作，不产生任何 Domain Fact（D-151/D-140）；
+ * - 配对范围 = 父卡的 active workload_assign（方向 UnitCard→WorkloadCard，与
+ *   D-150 Drop 建立的关系同源同键）；retained 子卡自身的 assign 关系未变化，不重推；
+ * - 全路径撤回（"整条错误路径全错了"意图）不重推任何配对——本函数只被层撤回入口
+ *   调用；用户把卡拖到正确 Unit 时 D-150 自然触发 Resolution；
+ * - 复用 resolutionTrigger 正式生产触发入口与 D-142 稳定 ID：同 ID 后写覆盖
+ *   （re-offer），不新增推荐通道、不触碰 Recommendation 状态机；
+ * - 判定输入 = 当前事实状态（撤回成功后的实时 DataService）：父卡或目标 Unit
+ *   已死亡 / revoked（D-154：业务世界中等同不存在）的配对跳过，不重推；
+ * - 单配对失败不阻断其余配对：先全部尝试、末尾合并抛出（撤回事实已提交不回滚，
+ *   与 A① 同一模式）；重试同一撤回入口按当前事实收敛（D-142 upsert 幂等）。
+ */
+async function resubmitLayerParentResolution(
+  dataService: DataService,
+  parentWorkloadCardId: string
+): Promise<ResubmittedResolutionPair[]> {
+  const [cards, relations] = await Promise.all([
+    dataService.getCards(),
+    dataService.getRelations(),
+  ]);
+  const parentCard = cards.find(
+    (c) => c.id === parentWorkloadCardId && c.type === "workload"
+  );
+  // D-154：revoked 父卡业务世界中等同不存在，不重推其配对
+  if (!parentCard || isBusinessRevoked(parentCard)) {
+    return [];
+  }
+  const resubmitted: ResubmittedResolutionPair[] = [];
+  const failures: string[] = [];
+  for (const relation of relations) {
+    if (
+      !relation.active ||
+      relation.type !== "workload_assign" ||
+      relation.targetId !== parentWorkloadCardId
+    ) {
+      continue;
+    }
+    const unit = cards.find(
+      (c) => c.id === relation.sourceId && c.type === "unit"
+    );
+    // D-154：目标 Unit 已死亡 / revoked = 业务世界不存在，跳过该配对
+    if (!unit || isBusinessRevoked(unit)) {
+      continue;
+    }
+    try {
+      await resolveWorkloadToUnitAndRecommend(
+        dataService,
+        parentWorkloadCardId,
+        relation.sourceId
+      );
+      resubmitted.push({
+        workloadCardId: parentWorkloadCardId,
+        targetUnitId: relation.sourceId,
+      });
+    } catch (error) {
+      failures.push(
+        `${relation.sourceId}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `撤回已提交成功，但自动重新 Resolution 存在失败配对（${failures.join("；")}）。` +
+        `已成功的配对不受影响；重试同一撤回入口即可按当前事实收敛。`
+    );
+  }
+  return resubmitted;
 }
 
 /**
@@ -191,15 +279,27 @@ export async function revokeDerivedPath(
  *
  * 语义完全不变：本层使用证据的子卡保留、未使用子卡软失效、本层拆分边软删。
  * 不得与本层的全路径入口合并或互为 fallback。
+ *
+ * D-151 剩余①（撤回后自动重新 Resolution，假设 A-001）：层撤回提交成功后，
+ * ① 先按当前事实失效旧反馈（A①），② 再对父卡的全部 active workload_assign
+ * 配对自动重新 Resolution（详见 resubmitLayerParentResolution 边界注释）。
+ * 全路径撤回不自动重推（意图分流依据见 A-001 记录）。
  */
 export async function revokeSplitLayer(
   dataService: DataService,
   parentWorkloadCardId: string,
   opts?: { executionBatchId?: string }
-): Promise<WorkloadRevocationImpact> {
+): Promise<
+  WorkloadRevocationImpact & { resubmittedResolutions: ResubmittedResolutionPair[] }
+> {
   const impact = await executeSplitLayerRevocation(dataService, parentWorkloadCardId, opts);
   // D-151 A①：层撤回提交成功后，失效依赖被撤（revoked）子卡的旧反馈；
   // retained 子卡（锚点存活）不误伤
   await invalidateStaleResolutionFeedback(dataService);
-  return impact;
+  // D-151 剩余①：失效先行、重推后行——父卡配对按当前事实自动重新 Resolution
+  const resubmittedResolutions = await resubmitLayerParentResolution(
+    dataService,
+    parentWorkloadCardId
+  );
+  return { ...impact, resubmittedResolutions };
 }
