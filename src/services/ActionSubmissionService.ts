@@ -303,7 +303,7 @@ export async function submitDropAssignRelation(
   const duplicate = existingRelations.find(
     (r) =>
       r.active &&
-      r.type === "workload_assign" &&
+      r.type === relation.type &&
       r.sourceId === relation.sourceId &&
       r.targetId === relation.targetId
   );
@@ -312,4 +312,44 @@ export async function submitDropAssignRelation(
   }
   await dataService.saveRelations([relation]);
   return { outcome: "persisted", relation };
+}
+
+/**
+ * 移动关系持久化入口（R2 移动/解除关系；用户 2026-10-21 裁定：移动 = 解除旧关系 + 新建关系，
+ * 见 AGENT/DECISIONS-AND-ASSUMPTIONS.md A-002）。
+ *
+ * 一批保存：被解除关系的软删除副本（同 ID upsert → active=false，行保留审计，
+ * 与撤回的关系软删语义一致）+ 新关系（P2-1 业务键幂等：已存在同键 active 时
+ * 复用既有行返回 reused，不建第二条）。
+ *
+ * 重试安全：同一移动重复提交收敛——软删除 upsert 幂等 + 业务键幂等；
+ * 旧关系已 inactive 时再提交无变化（deactivated 为 null 时调用方不再传入）。
+ *
+ * 本入口不做 Relation 创建 / 端点校验（调用方经 relationService.createRelation 完成），
+ * 不涉及 WorkloadResult / WorkloadCard / WorkloadSplit / Recommendation。
+ */
+export async function submitMoveAssignRelation(
+  deactivatedRelation: Relation | null,
+  newRelation: Relation,
+  dataService: DataService
+): Promise<{ outcome: "persisted" | "reused"; relation: Relation }> {
+  const existingRelations = await dataService.getRelations();
+  const duplicate = existingRelations.find(
+    (r) =>
+      r.active &&
+      r.type === newRelation.type &&
+      r.sourceId === newRelation.sourceId &&
+      r.targetId === newRelation.targetId
+  );
+  const toSave: Relation[] = [];
+  if (deactivatedRelation) {
+    toSave.push(deactivatedRelation);
+  }
+  if (!duplicate) {
+    toSave.push(newRelation);
+  }
+  if (toSave.length > 0) {
+    await dataService.saveRelations(toSave);
+  }
+  return { outcome: duplicate ? "reused" : "persisted", relation: duplicate ?? newRelation };
 }

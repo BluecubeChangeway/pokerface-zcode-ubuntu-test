@@ -11,8 +11,9 @@ import { defaultResolutionContextBuilder } from "../domain/workload/resolutionCo
 import { recommendationStore } from "../stores/recommendationStore";
 
 /**
- * D-151 剩余①（撤回后自动重新 Resolution）行为测试 —— 假设 A-001 配对范围：
- * - 层撤回：对父卡全部 active workload_assign 配对自动重新 Resolution（失效 A① 先行、重推后行）；
+ * D-151 剩余①（撤回后自动重新 Resolution）行为测试 —— 用户 2026-10-21 裁定方案 B：
+ * - 层撤回：对 [父卡 + 本层保留子卡（retained）] 的全部 active workload_assign 配对
+ *   自动重新 Resolution（失效 A① 先行、重推后行）；
  * - 全路径撤回：不自动重推任何配对（"整条错误路径全错了"意图分流）；
  * - 自动 = 自动分析+推荐，绝不自动执行业务动作（零 Domain Fact 创建）；
  * - D-142 稳定 ID / re-offer 语义保持；单配对失败不阻断其余配对、末尾合并抛出。
@@ -40,9 +41,13 @@ interface Universe {
 
 /**
  * 层撤回宇宙：父卡 + 两子卡（c1 有 assign = 层撤回后 retained；c2 未使用 = 软失效）。
- * opts.parentAssign = 父卡与 unitOwner 之间有 active workload_assign（A-001 重推配对来源）。
+ * opts.parentAssign = 父卡与 unitOwner 之间有 active workload_assign（重推配对来源之一）。
+ * opts.childAssign = c1 与 unitUser 之间的 assign（默认存在；置 false 得"全部子卡未使用"宇宙）。
  */
-function buildUniverse(s: string, opts?: { parentAssign?: boolean }): Universe {
+function buildUniverse(
+  s: string,
+  opts?: { parentAssign?: boolean; childAssign?: boolean }
+): Universe {
   const unitOwner: UnitCard = {
     id: `u-owner-${s}`, type: "unit", name: `科室A-${s}`,
     unitKind: "department", configurationState: "configured", attributes: {},
@@ -76,9 +81,14 @@ function buildUniverse(s: string, opts?: { parentAssign?: boolean }): Universe {
   const relations: Relation[] = [
     { id: `rel-split-c1-${s}`, type: "workload_split", sourceId: parentCard.id, targetId: childCards[0].id, active: true, metadata: { parentWorkloadResultId: parentResult.id, childWorkloadResultId: childResults[0].id } },
     { id: `rel-split-c2-${s}`, type: "workload_split", sourceId: parentCard.id, targetId: childCards[1].id, active: true, metadata: { parentWorkloadResultId: parentResult.id, childWorkloadResultId: childResults[1].id } },
-    // c1 assign → unitUser：层撤回后 c1 因继续使用证据 retained
-    { id: `rel-assign-c1-${s}`, type: "workload_assign", sourceId: unitUser.id, targetId: childCards[0].id, active: true },
   ];
+  if (opts?.childAssign !== false) {
+    // c1 assign → unitUser：层撤回后 c1 因继续使用证据 retained（方案 B 重推配对来源之一）
+    relations.push({
+      id: `rel-assign-c1-${s}`, type: "workload_assign",
+      sourceId: unitUser.id, targetId: childCards[0].id, active: true,
+    });
+  }
   if (opts?.parentAssign) {
     relations.push({
       id: `rel-assign-parent-${s}`, type: "workload_assign",
@@ -112,7 +122,7 @@ describe("D-151 剩余① 撤回后自动重新 Resolution（假设 A-001 配对
     recommendationStore.getState().setRecommendations([]);
   });
 
-  it("层撤回后：父卡全部 active 配对自动重新 Resolution（recommended），且零 Domain Fact 创建", async () => {
+  it("层撤回后：父卡与 retained 子卡的全部 active 配对自动重新 Resolution（方案 B），且零 Domain Fact 创建", async () => {
     const s = nextSuffix();
     const u = buildUniverse(s, { parentAssign: true });
     const ds = new MockDataService();
@@ -122,18 +132,29 @@ describe("D-151 剩余① 撤回后自动重新 Resolution（假设 A-001 配对
 
     const impact = await revokeSplitLayer(ds, u.parentCard.id);
 
-    // 重推配对 = 父卡的 active workload_assign（unitOwner → parent）
-    expect(impact.resubmittedResolutions).toEqual([
-      { workloadCardId: u.parentCard.id, targetUnitId: u.unitOwner.id },
-    ]);
-    // 稳定 ID 注册为 recommended（D-142 同 ID 语义）
-    const recId = buildResolutionRecommendationId(u.parentCard.id, u.unitOwner.id);
-    const rec = storeById(recId);
-    expect(rec).toBeDefined();
-    expect(rec!.status).toBe("recommended");
-    expect(rec!.relatedEntityIds).toEqual([u.parentCard.id, u.unitOwner.id]);
-    // 无 assign 的配对不重推（父卡与 unitUser 无 assign）
+    // 方案 B 重推配对 = 父卡 + retained 子卡（c1 有 assign → retained）的全部 active 配对
+    expect(
+      impact.resubmittedResolutions
+        .map((p) => `${p.workloadCardId}->${p.targetUnitId}`)
+        .sort()
+    ).toEqual(
+      [
+        `${u.parentCard.id}->${u.unitOwner.id}`,
+        `${u.childCards[0].id}->${u.unitUser.id}`,
+      ].sort()
+    );
+    // 稳定 ID 注册为 recommended（D-142 同 ID 语义）——父卡配对
+    const parentRecId = buildResolutionRecommendationId(u.parentCard.id, u.unitOwner.id);
+    const parentRec = storeById(parentRecId);
+    expect(parentRec).toBeDefined();
+    expect(parentRec!.status).toBe("recommended");
+    expect(parentRec!.relatedEntityIds).toEqual([u.parentCard.id, u.unitOwner.id]);
+    // retained 子卡配对（c1 → unitUser）同样重推
+    const c1RecId = buildResolutionRecommendationId(u.childCards[0].id, u.unitUser.id);
+    expect(storeById(c1RecId)?.status).toBe("recommended");
+    // 无 assign 的配对不重推（父卡与 unitUser、c2 与任何 Unit 均无 assign）
     expect(storeIds().has(buildResolutionRecommendationId(u.parentCard.id, u.unitUser.id))).toBe(false);
+    expect(storeIds().has(buildResolutionRecommendationId(u.childCards[1].id, u.unitOwner.id))).toBe(false);
     // 自动 ≠ 自动执行：卡与结果的行集合不变（层撤回软失效为同 ID upsert，无任何新建）
     expect(new Set((await ds.getCards()).map((c) => c.id))).toEqual(cardsBefore);
     expect(new Set((await ds.getWorkloadResults()).map((r) => r.id))).toEqual(resultsBefore);
@@ -159,9 +180,9 @@ describe("D-151 剩余① 撤回后自动重新 Resolution（假设 A-001 配对
     ).toHaveLength(0);
   });
 
-  it("父卡无 active 配对：层撤回零重推", async () => {
+  it("父卡与 retained 子卡均无 active 配对：层撤回零重推", async () => {
     const s = nextSuffix();
-    const u = buildUniverse(s); // 无 parentAssign
+    const u = buildUniverse(s, { parentAssign: false, childAssign: false }); // 全部子卡未使用 → retained 为空；父卡无 assign
     const ds = new MockDataService();
     await seed(ds, u);
 
@@ -249,10 +270,13 @@ describe("D-151 剩余① 撤回后自动重新 Resolution（假设 A-001 配对
     const pairKeys = impact.resubmittedResolutions
       .map((p) => `${p.workloadCardId}->${p.targetUnitId}`)
       .sort();
-    expect(pairKeys).toEqual([
-      `${u.parentCard.id}->${u.unitOwner.id}`,
-      `${u.parentCard.id}->${u.unitUser.id}`,
-    ]);
+    expect(pairKeys).toEqual(
+      [
+        `${u.childCards[0].id}->${u.unitUser.id}`, // retained 子卡 c1 的配对（方案 B）
+        `${u.parentCard.id}->${u.unitOwner.id}`,
+        `${u.parentCard.id}->${u.unitUser.id}`,
+      ].sort()
+    );
     expect(storeIds().has(buildResolutionRecommendationId(u.parentCard.id, u.unitOwner.id))).toBe(true);
     expect(storeIds().has(buildResolutionRecommendationId(u.parentCard.id, u.unitUser.id))).toBe(true);
   });

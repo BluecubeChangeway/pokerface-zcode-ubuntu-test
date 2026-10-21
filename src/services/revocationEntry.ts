@@ -191,8 +191,8 @@ export async function revokeDerivedPath(
 }
 
 /**
- * 撤回后自动重新 Resolution 的配对（D-151 剩余①；假设 A-001，见
- * AGENT/DECISIONS-AND-ASSUMPTIONS.md——配对范围属产品待澄清项，按假设协议推进并呈报复核）。
+ * 撤回后自动重新 Resolution 的配对（D-151 剩余①；用户 2026-10-21 裁定方案 B，
+ * 记录见 AGENT/DECISIONS-AND-ASSUMPTIONS.md A-001 现行版）。
  */
 export interface ResubmittedResolutionPair {
   workloadCardId: string;
@@ -200,45 +200,46 @@ export interface ResubmittedResolutionPair {
 }
 
 /**
- * D-151 剩余①（撤回后自动重新 Resolution）：层撤回提交成功后，对父卡的
- * 全部 active workload_assign 配对自动重新执行 Resolution。
+ * D-151 剩余①（撤回后自动重新 Resolution，用户 2026-10-21 裁定方案 B）：层撤回
+ * 提交成功后，对 [父卡 + 本层保留下来的已使用子卡（retained）] 的全部 active
+ * workload_assign 配对自动重新执行 Resolution。
  *
- * 语义边界（对应 D-151 / D-142 / D-150 / D-153，假设 A-001 不扩大）：
+ * 语义边界（对应 D-151 / D-142 / D-150 / D-153，不扩大）：
  * - "自动"只表示自动重新分析和推荐（A① 失效在前、重推在后）——绝不自动执行
  *   Split / Aggregate / Assign 等业务动作，不产生任何 Domain Fact（D-151/D-140）；
- * - 配对范围 = 父卡的 active workload_assign（方向 UnitCard→WorkloadCard，与
- *   D-150 Drop 建立的关系同源同键）；retained 子卡自身的 assign 关系未变化，不重推；
- * - 全路径撤回（"整条错误路径全错了"意图）不重推任何配对——本函数只被层撤回入口
- *   调用；用户把卡拖到正确 Unit 时 D-150 自然触发 Resolution；
+ * - 配对范围 = 上述各卡的 active workload_assign（方向 UnitCard→WorkloadCard，
+ *   与 D-150 Drop 建立的关系同源同键）；全路径撤回不调用本函数（"整条错误路径
+ *   全错了"意图不重推，用户把卡拖到正确 Unit 时 D-150 自然触发 Resolution）；
  * - 复用 resolutionTrigger 正式生产触发入口与 D-142 稳定 ID：同 ID 后写覆盖
  *   （re-offer），不新增推荐通道、不触碰 Recommendation 状态机；
- * - 判定输入 = 当前事实状态（撤回成功后的实时 DataService）：父卡或目标 Unit
+ * - 判定输入 = 当前事实状态（撤回成功后的实时 DataService）：卡或目标 Unit
  *   已死亡 / revoked（D-154：业务世界中等同不存在）的配对跳过，不重推；
  * - 单配对失败不阻断其余配对：先全部尝试、末尾合并抛出（撤回事实已提交不回滚，
- *   与 A① 同一模式）；重试同一撤回入口按当前事实收敛（D-142 upsert 幂等）。
+ *   与 A① 同一模式）；重试同一撤回入口按当前事实收敛（D-142 upsert 幂等）；
+ * - CONFLICT-001 依赖注记：若层撤回删除范围裁定为"根除已用子卡"，retained
+ *   集合将为空，本函数自然退化为仅父卡配对——无需返工。
  */
-async function resubmitLayerParentResolution(
+async function resubmitAssignPairs(
   dataService: DataService,
-  parentWorkloadCardId: string
+  cardIds: string[]
 ): Promise<ResubmittedResolutionPair[]> {
   const [cards, relations] = await Promise.all([
     dataService.getCards(),
     dataService.getRelations(),
   ]);
-  const parentCard = cards.find(
-    (c) => c.id === parentWorkloadCardId && c.type === "workload"
+  const targetCardIds = new Set(cardIds);
+  const aliveWorkloadCards = cards.filter(
+    (c) =>
+      c.type === "workload" && targetCardIds.has(c.id) && !isBusinessRevoked(c)
   );
-  // D-154：revoked 父卡业务世界中等同不存在，不重推其配对
-  if (!parentCard || isBusinessRevoked(parentCard)) {
-    return [];
-  }
+  const aliveWorkloadCardIds = new Set(aliveWorkloadCards.map((c) => c.id));
   const resubmitted: ResubmittedResolutionPair[] = [];
   const failures: string[] = [];
   for (const relation of relations) {
     if (
       !relation.active ||
       relation.type !== "workload_assign" ||
-      relation.targetId !== parentWorkloadCardId
+      !aliveWorkloadCardIds.has(relation.targetId)
     ) {
       continue;
     }
@@ -252,11 +253,11 @@ async function resubmitLayerParentResolution(
     try {
       await resolveWorkloadToUnitAndRecommend(
         dataService,
-        parentWorkloadCardId,
+        relation.targetId,
         relation.sourceId
       );
       resubmitted.push({
-        workloadCardId: parentWorkloadCardId,
+        workloadCardId: relation.targetId,
         targetUnitId: relation.sourceId,
       });
     } catch (error) {
@@ -296,10 +297,11 @@ export async function revokeSplitLayer(
   // D-151 A①：层撤回提交成功后，失效依赖被撤（revoked）子卡的旧反馈；
   // retained 子卡（锚点存活）不误伤
   await invalidateStaleResolutionFeedback(dataService);
-  // D-151 剩余①：失效先行、重推后行——父卡配对按当前事实自动重新 Resolution
-  const resubmittedResolutions = await resubmitLayerParentResolution(
-    dataService,
-    parentWorkloadCardId
-  );
+  // D-151 剩余①（方案 B，用户 2026-10-21 裁定）：失效先行、重推后行——
+  // 重推范围 = 父卡 + 本层保留子卡（retained）的全部 active 配对
+  const resubmittedResolutions = await resubmitAssignPairs(dataService, [
+    parentWorkloadCardId,
+    ...impact.retained.map((e) => e.cardId),
+  ]);
   return { ...impact, resubmittedResolutions };
 }
