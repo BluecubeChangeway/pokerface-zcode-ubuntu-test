@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:local": "VITE_DATA_BACKEND=local vite",
     "server": "node local-server/server.mjs",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",

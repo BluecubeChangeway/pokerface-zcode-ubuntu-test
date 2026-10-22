@@ -1,6 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
-import { dataService } from "../services/MockDataService";
+import { dataService, runtimeDataBackend } from "../services/runtimeDataService";
+import { LocalFolderDataService } from "../services/LocalFolderDataService";
+import { clearDemoData, seedDemoData } from "../services/demoSeeder";
 import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import { deckStore } from "../stores/deckStore";
@@ -62,25 +64,65 @@ import type { WorkloadRevocationImpact } from "../domain/workload/revocationServ
 const CARD_GROUPS: CardType[] = ["unit", "workload", "budget"];
 const PLACEHOLDER = "（无）";
 
-function useCards(): AnyCard[] {
+function useCards(): { cards: AnyCard[]; bootError: string | undefined; reload: () => void } {
   const [cards, setCards] = useState<AnyCard[]>([]);
+  const [bootError, setBootError] = useState<string | undefined>(undefined);
+  const [refreshToken, setRefreshToken] = useState(0);
   useEffect(() => {
     let alive = true;
-    void dataService.getCards().then((result) => {
+    dataService.getCards().then((result) => {
       if (alive) {
         setCards(result);
         ensureCanvasBootstrapped(result);
+      }
+    }).catch((error) => {
+      // 本地后端连接失败等启动异常：如实呈现，不静默空白
+      if (alive) {
+        setBootError(error instanceof Error ? error.message : String(error));
       }
     });
     return () => {
       alive = false;
     };
+  }, [refreshToken]);
+  const reload = useCallback(() => {
+    setRefreshToken((token) => token + 1);
   }, []);
-  return cards;
+  return { cards, bootError, reload };
 }
 
 export function App() {
-  const cards = useCards();
+  const { cards, bootError, reload } = useCards();
+
+  // ---- 数据来源面板（R4a-2 本地文件夹存储接入；最小功能面板，非正式 UI）----
+  const localDataService = dataService instanceof LocalFolderDataService ? dataService : undefined;
+  const [seedBusy, setSeedBusy] = useState(false);
+  const handleSeedDemo = async () => {
+    if (!localDataService || seedBusy) return;
+    setSeedBusy(true);
+    setActionError(undefined);
+    try {
+      await seedDemoData(localDataService);
+      reload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSeedBusy(false);
+    }
+  };
+  const handleClearDemo = async () => {
+    if (!localDataService || seedBusy) return;
+    setSeedBusy(true);
+    setActionError(undefined);
+    try {
+      await clearDemoData(localDataService);
+      reload();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSeedBusy(false);
+    }
+  };
 
   // vanilla zustand store → React 渲染订阅
   useSyncExternalStore(canvasStore.subscribe, canvasStore.getState);
@@ -757,7 +799,33 @@ export function App() {
         ) : null}
       </section>
 
-      {/* 共享操作错误通道（confirm / 撤回 / 预览失败均经此呈现；不依赖推荐选中状态） */}
+      {/* 数据来源面板（R4a-2 本地文件夹存储接入）：后端标识 + 启动错误 + 演示数据灌入/清除 */}
+      <section aria-label="data-source" style={{ width: 260 }}>
+        <h2>数据来源</h2>
+        <div data-testid="data-backend-label" style={{ fontSize: 12, marginBottom: 8 }}>
+          {runtimeDataBackend === "local" ? "本地文件夹服务（重启不丢）" : "内存演示版（刷新即失）"}
+        </div>
+        {bootError !== undefined && (
+          <div data-testid="data-boot-error" style={{ fontSize: 12, color: "#c33" }}>
+            数据服务连接失败：{bootError}
+          </div>
+        )}
+        {runtimeDataBackend === "local" && bootError === undefined && (
+          <div style={{ display: "grid", gap: 8 }}>
+            {cards.length === 0 ? (
+              <button data-testid="seed-demo-button" disabled={seedBusy} onClick={() => void handleSeedDemo()}>
+                灌入演示数据
+              </button>
+            ) : (
+              <button data-testid="clear-demo-button" disabled={seedBusy} onClick={() => void handleClearDemo()}>
+                清除演示数据（你自建的数据不受影响）
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* 共享操作错误通道（confirm / 撤回 / 预览 / 播种失败均经此呈现；不依赖推荐选中状态） */}
       {actionError !== undefined && (
         <div data-testid="action-error" style={{ width: 320, fontSize: 12, color: "#c33" }}>
           {actionError}

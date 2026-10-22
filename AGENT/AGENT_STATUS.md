@@ -29,7 +29,7 @@
 
 ## 3. 当前状态（一句话）
 
-**2026-10-22：全部用户裁决已消化（CONFLICT-001 关闭、零语义变更）；R4a 本地文件夹存储引擎完成并经测试+独立冒烟验证（446/446 全绿）；App 运行时仍默认 Mock（刷新即失），存储接入与种子策略为下一项。**
+**2026-10-22 第二轮：App 已接入本地文件夹存储（R4a-2 完成，方案 B 演示数据策略）——`npm run server` + `npm run dev:local` 即用落盘数据，日常开发仍可用内存版；基线 454/454（29 文件）全绿。下一项：R3 拆分溯源设计报告（A-003 语义已裁定）已呈报待用户复核，随后按批复实施；浏览器端全链路 QA（browser-use）留待 UI 阶段。**
 
 ## 2.5 开发推进记录
 
@@ -39,6 +39,7 @@
 | R1 | 2026-10-21 | D-151 剩余① 撤回后自动重新 Resolution 接线（初版方案 A） | 新增 revocationAutoResubmit.test.ts 7 项全绿；全量 431/431（25 文件） | 见 git log "R1:" |
 | R1b+R2 | 2026-10-21 | 用户四项裁决落地：A-001→方案 B（重推范围纳入 retained 子卡配对）；R2 移动/解除关系运行时服务（moveRelationEntry：解除软删 + 幂等新建 + 旧配对反馈失效 + 新配对自动重推，submitMoveAssignRelation 持久化入口） | revocationAutoResubmit 7 项更新 + moveRelation.test.ts 8 项全绿；全量 439/439（26 文件） | 见 git log "R2:" |
 | 裁决关闭+R4a | 2026-10-22 | CONFLICT-001 经用户澄清关闭（"罪恶之树"指向完全撤回=D-158 已实现语义；D-153 层撤回维持不变，零代码变更）；R4a 本地文件夹存储引擎完成（用户修订：不进浏览器、存指定文件夹）：local-server/server.mjs（零依赖 Node 服务、原子写、损坏保护、重启恢复）+ LocalFolderDataService 适配器 + npm run server | localFolderDataService.test.ts 7 项全绿（upsert 等价/删除 no-op/按 id getter/重启持久化/空态不伪造/损坏保护）；全量 446/446（27 文件）；独立进程冒烟实测：落盘 JSON 人可检视、杀进程重启数据完整恢复 | 见 git log "R4a:" |
+| R4a-2 | 2026-10-22 | App 接入本地文件夹存储（方案 B：空文件夹首启空白 + 一键灌入/清除演示数据，清除精确按演示链 id、用户自建数据不受影响）：runtimeDataService 双档工厂（VITE_DATA_BACKEND，mock 档复用既有单例——既有 spy 测试零扰动）+ demoSeeder + App 数据源面板（后端标识/连接错误/播种按钮）+ dev:local 脚本 + vite-env 类型声明 | runtimeBackend.test.ts 6 项（工厂双档/播种全集合/幂等/清除保用户数据）+ dataSourcePanel.dom.test.ts 2 项全绿；全量 454/454（29 文件）/ typecheck / build 全绿 | 见 git log "R4a-2:" |
 
 **待裁决（无）**：CONFLICT-001 已于 2026-10-22 经用户澄清关闭，现行语义与用户确认完全一致。
 

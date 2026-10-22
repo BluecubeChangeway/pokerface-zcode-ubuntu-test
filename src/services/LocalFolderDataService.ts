@@ -12,6 +12,20 @@ import type { CalculationSnapshot, ResultSet, WorkloadResult, WorkloadSplit } fr
 import type { DataService } from "./DataService";
 
 /**
+ * 播种专用：可经原始集合写入的参考数据集合名（R4a-2 演示数据播种扩展）。
+ * 与 local-server 的集合名一一对应；DataService 接口不开放这些集合的写方法。
+ */
+export type SeedableCollection =
+  | "workload-definitions"
+  | "workload-executions"
+  | "calculation-snapshots"
+  | "result-sets"
+  | "score-definitions"
+  | "measurement-results"
+  | "adjustment-tables"
+  | "recommendations";
+
+/**
  * 本地文件夹数据服务（R4a 阶段 1；用户 2026-10-22 裁定：数据 = "工程资源"，
  * 存于用户/系统指定的特定文件夹，不进浏览器——见
  * AGENT/DECISIONS-AND-ASSUMPTIONS.md A-004）。
@@ -178,5 +192,41 @@ export class LocalFolderDataService implements DataService {
 
   async deleteWorkloadResults(ids: string[]): Promise<void> {
     await this.deleteCollectionRows("workload-results", ids);
+  }
+
+  // ---- 演示数据播种扩展（R4a-2 方案 B：空文件夹首启空白，演示数据一键灌入/清除）----
+  // 非 DataService 接口成员：DataService 接口只开放五个可写事实集合
+  //（cards/relations/workload-results/workload-splits/calculation-results）；
+  // 演示链还包含通常只读的参考数据集合（definitions/executions/snapshots/
+  // resultSets/scoreDefs/measurement/adjustmentTable/recommendations），
+  // 播种需要对其落盘。本扩展仅供 demoSeeder 使用，业务运行时不调用。
+
+  /** 播种专用：向参考数据集合写入行（upsert by id，同 save* 语义） */
+  async saveSeedCollection<T extends { id: string }>(
+    collection: SeedableCollection,
+    rows: T[]
+  ): Promise<void> {
+    await this.saveCollection(collection, rows);
+  }
+
+  /** 播种专用：按 id 删除参考数据集合行（缺失 no-op，同 delete* 语义） */
+  async deleteSeedCollectionRows(collection: SeedableCollection, ids: string[]): Promise<void> {
+    await this.deleteCollectionRows(collection, ids);
+  }
+
+  /**
+   * 播种专用（demoSeeder 清除）：按 id 删除 relations 行。
+   * DataService 接口只声明了 deleteCards / deleteWorkloadResults；relations
+   * 的删除在业务运行时经撤回编排（软删 = upsert active=false，不物理删行），
+   * 演示数据清除是唯一需要物理删除 relations 的场景，语义同 delete*
+   * （按 id 过滤、缺失 no-op）。业务代码不得调用本方法。
+   */
+  async deleteDemoRelations(ids: string[]): Promise<void> {
+    await this.deleteCollectionRows("relations", ids);
+  }
+
+  /** 播种专用（demoSeeder 清除）：按 id 删除 calculation-results 行（同上边界） */
+  async deleteDemoCalculationResults(ids: string[]): Promise<void> {
+    await this.deleteCollectionRows("calculation-results", ids);
   }
 }
