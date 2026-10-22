@@ -31,3 +31,6 @@ Thumbs.db
 # Local env files
 .env
 .env.*
+
+# 本地数据服务的数据文件夹（工程资源，不入库）
+poker-face-data/

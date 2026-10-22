@@ -29,7 +29,7 @@
 
 ## 3. 当前状态（一句话）
 
-**2026-10-21 用户授权自主推进并交付四项裁决后：A-001 已按方案 B 确认实施（U-01 关闭）；R2 移动/解除关系运行时服务已实现并验证（U-02 服务层关闭，UI 接线归 UI 产品化）；基线 439/439（26 文件）全绿。进行中：CONFLICT-001（层撤回删除范围 × D-153）待用户精确对齐；R3 拆分溯源设计（A-003 用户语义已裁定）与 R4a 本地存储（A-004 路线已定）待开工。**
+**2026-10-22：全部用户裁决已消化（CONFLICT-001 关闭、零语义变更）；R4a 本地文件夹存储引擎完成并经测试+独立冒烟验证（446/446 全绿）；App 运行时仍默认 Mock（刷新即失），存储接入与种子策略为下一项。**
 
 ## 2.5 开发推进记录
 
@@ -37,9 +37,14 @@
 |---|---|---|---|---|
 | R0 | 2026-10-21 | 工程可复现性基础设施（U-10）：README / .nvmrc / engines >=22.14.0 <23 / `npm run verify` 一键链 | verify exit 0，424/424 | 见 git log "R0:" |
 | R1 | 2026-10-21 | D-151 剩余① 撤回后自动重新 Resolution 接线（初版方案 A） | 新增 revocationAutoResubmit.test.ts 7 项全绿；全量 431/431（25 文件） | 见 git log "R1:" |
-| R1b+R2 | 2026-10-21 | 用户四项裁决落地：A-001→方案 B（重推范围纳入 retained 子卡配对）；R2 移动/解除关系运行时服务（moveRelationEntry：解除软删 + 幂等新建 + 旧配对反馈失效 + 新配对自动重推，submitMoveAssignRelation 持久化入口） | revocationAutoResubmit 7 项更新 + moveRelation.test.ts 8 项全绿；全量 439/439（26 文件）/ typecheck / build 全绿 | 见 git log "R2:" |
+| R1b+R2 | 2026-10-21 | 用户四项裁决落地：A-001→方案 B（重推范围纳入 retained 子卡配对）；R2 移动/解除关系运行时服务（moveRelationEntry：解除软删 + 幂等新建 + 旧配对反馈失效 + 新配对自动重推，submitMoveAssignRelation 持久化入口） | revocationAutoResubmit 7 项更新 + moveRelation.test.ts 8 项全绿；全量 439/439（26 文件） | 见 git log "R2:" |
+| 裁决关闭+R4a | 2026-10-22 | CONFLICT-001 经用户澄清关闭（"罪恶之树"指向完全撤回=D-158 已实现语义；D-153 层撤回维持不变，零代码变更）；R4a 本地文件夹存储引擎完成（用户修订：不进浏览器、存指定文件夹）：local-server/server.mjs（零依赖 Node 服务、原子写、损坏保护、重启恢复）+ LocalFolderDataService 适配器 + npm run server | localFolderDataService.test.ts 7 项全绿（upsert 等价/删除 no-op/按 id getter/重启持久化/空态不伪造/损坏保护）；全量 446/446（27 文件）；独立进程冒烟实测：落盘 JSON 人可检视、杀进程重启数据完整恢复 | 见 git log "R4a:" |
 
-**待裁决（不阻塞其他工作）**：CONFLICT-001——用户 2026-10-21"罪恶之树"表述与已封板 D-153 层撤回"保留已用子卡"语义的潜在冲突，已场景式呈报精确对齐；裁决前维持 D-153 现行语义不动。详见 AGENT/DECISIONS-AND-ASSUMPTIONS.md CONFLICT-001。
+**待裁决（无）**：CONFLICT-001 已于 2026-10-22 经用户澄清关闭，现行语义与用户确认完全一致。
+
+**下一项工作**：
+1. R4a-2 App 接入：App 运行时数据源从 Mock 切换至本地文件夹服务（含种子数据策略——演示链数据如何进入文件夹、空文件夹首启体验、启动编排（server+dev 一键）），实施前以场景呈报用户选择接入节奏。
+2. R3 拆分溯源设计报告（A-003 语义已裁定）：结构化 (数据本源, 筛选条件组) 溯源 + 跨批次匹配复用服务设计，场景式呈报后实施。
 
 ## 4. 下一步候选（详见系统记忆 next-work-candidates 与快照 02-OPEN-ITEMS）
 
