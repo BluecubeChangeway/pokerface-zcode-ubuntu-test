@@ -651,6 +651,8 @@ describe("P1 persistence failure scenarios", () => {
       getCalculationSnapshots: dataService.getCalculationSnapshots.bind(dataService),
       getWorkloadResults: dataService.getWorkloadResults.bind(dataService),
       getWorkloadSplits: dataService.getWorkloadSplits.bind(dataService),
+      getSplitProvenances: dataService.getSplitProvenances.bind(dataService),
+      saveSplitProvenances: dataService.saveSplitProvenances.bind(dataService),
     };
 
     const context: ActionExecutorContext = {
@@ -824,6 +826,8 @@ describe("P1: Recommendation context mismatch validation", () => {
       getCalculationSnapshots: dataService.getCalculationSnapshots.bind(dataService),
       getWorkloadResults: dataService.getWorkloadResults.bind(dataService),
       getWorkloadSplits: dataService.getWorkloadSplits.bind(dataService),
+      getSplitProvenances: dataService.getSplitProvenances.bind(dataService),
+      saveSplitProvenances: dataService.saveSplitProvenances.bind(dataService),
     };
     
     const ctx2: ActionExecutorContext = {
@@ -991,6 +995,8 @@ it("Test A: saveWorkloadSplits 第一次失败，retry 不产生重复 Card/Rela
       getCalculationSnapshots: dataService.getCalculationSnapshots.bind(dataService),
       getWorkloadResults: dataService.getWorkloadResults.bind(dataService),
       getWorkloadSplits: dataService.getWorkloadSplits.bind(dataService),
+      getSplitProvenances: dataService.getSplitProvenances.bind(dataService),
+      saveSplitProvenances: dataService.saveSplitProvenances.bind(dataService),
       saveCards: dataService.saveCards.bind(dataService),
     };
 
@@ -1313,6 +1319,8 @@ it("Test A: saveWorkloadSplits 第一次失败，retry 不产生重复 Card/Rela
       getCalculationSnapshots: dataService.getCalculationSnapshots.bind(dataService),
       getWorkloadResults: dataService.getWorkloadResults.bind(dataService),
       getWorkloadSplits: dataService.getWorkloadSplits.bind(dataService),
+      getSplitProvenances: dataService.getSplitProvenances.bind(dataService),
+      saveSplitProvenances: dataService.saveSplitProvenances.bind(dataService),
     };
 
     recommendationStore.getState().setRecommendations([rec]);
@@ -1430,6 +1438,8 @@ it("Test A: saveWorkloadSplits 第一次失败，retry 不产生重复 Card/Rela
       getCalculationSnapshots: dataService.getCalculationSnapshots.bind(dataService),
       getWorkloadResults: dataService.getWorkloadResults.bind(dataService),
       getWorkloadSplits: dataService.getWorkloadSplits.bind(dataService),
+      getSplitProvenances: dataService.getSplitProvenances.bind(dataService),
+      saveSplitProvenances: dataService.saveSplitProvenances.bind(dataService),
     };
 
     recommendationStore.getState().setRecommendations([rec]);
@@ -1798,6 +1808,8 @@ describe("workload_assign 业务键幂等复用（Q-09-C P2-1 裁定 B）", () =
       getCalculationSnapshots: dataService.getCalculationSnapshots.bind(dataService),
       getWorkloadResults: dataService.getWorkloadResults.bind(dataService),
       getWorkloadSplits: dataService.getWorkloadSplits.bind(dataService),
+      getSplitProvenances: dataService.getSplitProvenances.bind(dataService),
+      saveSplitProvenances: dataService.saveSplitProvenances.bind(dataService),
     };
 
     recommendationStore.getState().setRecommendations([rec]);
@@ -2171,6 +2183,8 @@ describe("H-2 / D-146：confirm_split 显式 child ID 跨 execution 身份检查
       getCalculationSnapshots: dataService.getCalculationSnapshots.bind(dataService),
       getWorkloadResults: dataService.getWorkloadResults.bind(dataService),
       getWorkloadSplits: dataService.getWorkloadSplits.bind(dataService),
+      getSplitProvenances: dataService.getSplitProvenances.bind(dataService),
+      saveSplitProvenances: dataService.saveSplitProvenances.bind(dataService),
     };
   }
 

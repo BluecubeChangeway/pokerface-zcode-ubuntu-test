@@ -27,7 +27,8 @@
  * 集合清单（与 DataService 接口一一对应）：
  *   cards, relations, workload-results, workload-splits, calculation-results,
  *   result-sets, calculation-snapshots, workload-executions, workload-definitions,
- *   score-definitions, measurement-results, adjustment-tables, recommendations
+ *   score-definitions, measurement-results, adjustment-tables, recommendations,
+ *   split-provenances（R3 拆分溯源：查询投影，upsert by id，撤回不删除）
  */
 
 import http from "node:http";
@@ -50,6 +51,7 @@ export const COLLECTIONS = [
   "measurement-results",
   "adjustment-tables",
   "recommendations",
+  "split-provenances",
 ];
 
 const DEFAULT_PORT = 8787;

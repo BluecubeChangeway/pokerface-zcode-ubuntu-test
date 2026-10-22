@@ -9,6 +9,7 @@ import type {
 } from "../domain/score/types";
 import type { WorkloadDefinition, WorkloadExecution } from "../domain/workload/types";
 import type { CalculationSnapshot, ResultSet, WorkloadResult, WorkloadSplit } from "../domain/workload/types";
+import type { SplitProvenanceRecord } from "../domain/workload/splitProvenance";
 import type { DataService } from "./DataService";
 
 /**
@@ -164,6 +165,14 @@ export class LocalFolderDataService implements DataService {
 
   async getWorkloadSplits(): Promise<WorkloadSplit[]> {
     return this.getCollection<WorkloadSplit>("workload-splits");
+  }
+
+  async getSplitProvenances(): Promise<SplitProvenanceRecord[]> {
+    return this.getCollection<SplitProvenanceRecord>("split-provenances");
+  }
+
+  async saveSplitProvenances(records: SplitProvenanceRecord[]): Promise<void> {
+    await this.saveCollection("split-provenances", records);
   }
 
   async saveRelations(relations: Relation[]): Promise<void> {

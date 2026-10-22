@@ -13,6 +13,11 @@ import {
   isBusinessRevoked,
   isWorkloadSplitRecordRevoked,
 } from "../domain/workload/revocationService";
+import {
+  buildSplitProvenance,
+  matchReusableChildren,
+  type SplitProvenanceRecord,
+} from "../domain/workload/splitProvenance";
 import { DefaultCapabilityProvider } from "./capabilityProvider";
 import { v4 as uuidv4 } from "uuid";
 import type { DataService } from "./DataService";
@@ -38,6 +43,12 @@ export interface ActionExecutorContext {
   existingWorkloadSplits: Map<string, WorkloadSplit>;
   /** 现有 Recommendation 列表，用于 executeUserDecision lookup */
   recommendations: Map<string, Recommendation>;
+  /**
+   * 拆分溯源记录（R3，D-157 规则 B 复用匹配的查询投影）。
+   * 可选字段：不参与复用判定的既有调用方（use_existing / aggregate 等）不受影响；
+   * confirm_split 路径由 buildActionContext 装载，缺省时复用匹配自然退化为全新建。
+   */
+  existingSplitProvenances?: SplitProvenanceRecord[];
   /** DataService 实例，用于持久化等操作（可选） */
   dataService?: DataService | null;
   /** Endpoint kind lookup: entityId -> endpoint kind (用于 Relation 验证) */
@@ -76,6 +87,13 @@ export interface ActionExecutorResult {
   pendingSplitRelations?: PendingSplitRelation[];
   /** 本次 Split 执行批次标识（H-2 / D-145 / D-146：供持久化边界做跨 execution 身份兜底检查） */
   executionBatchId?: string;
+  /**
+   * R3 拆分溯源（用户裁定 A-003 + 2026-10-22 批复）：本次拆分执行的溯源记录
+   * （本源 + 条件组，含复用子项登记的被复用结果 ID），由持久化阶段顺带落盘。
+   */
+  splitProvenance?: SplitProvenanceRecord;
+  /** R3 复用命中的子项结果 ID（Q3 可见性 / 测试观测；非业务事实） */
+  reusedChildResultIds?: string[];
   /** 错误信息（失败时） */
   error?: string;
 }
@@ -618,19 +636,108 @@ export function executeSplitWorkload(
     }
   }
 
-  // 7. 构造待建立的 Split Relation 信息
-  // 顺序与 splitResult.childResults 对应
-  const pendingSplitRelations: PendingSplitRelation[] = splitResult.childResults.map((childResult) => ({
-    parentWorkloadCardId,
-    childWorkloadResultId: childResult.id,
+  // 6.5 R3 跨批次复用匹配（D-157 规则 B；用户裁定 A-003 + Q1/Q2 批复）：
+  // 同源 + 同条件（锚点+维度+统计内容，名称不比对）的既往存活产物 → 复用，不重复创建。
+  // retry 一致性（D-144 规则 2）：本批次已有溯源记录时，记录登记的 childResultId 即
+  // 本次执行的身份——产物已死亡则明确拒绝（不得静默换身份新建），需新决策重新确认。
+  const ownProvenance = context.existingSplitProvenances?.find(
+    (record) => record.id === executionBatchId
+  );
+  const proposedConditions = splitParameters.children.map((child: { resultSetId: string; resultItemId: string; value: number | null; dimensions: Record<string, string> }) => ({
+    resultSetId: child.resultSetId,
+    resultItemId: child.resultItemId,
+    value: child.value,
+    dimensions: child.dimensions,
+    period: parentResult.period,
   }));
+  const reuseByAnchor = new Map<string, string>(); // `${resultSetId}::${resultItemId}` → 复用结果 ID
+  if (ownProvenance) {
+    for (const condition of proposedConditions) {
+      const anchor = `${condition.resultSetId}::${condition.resultItemId}`;
+      const recorded = ownProvenance.conditions.find(
+        (c) => c.resultSetId === condition.resultSetId && c.resultItemId === condition.resultItemId
+      );
+      if (!recorded) {
+        return {
+          success: false,
+          createdRelations: [],
+          createdWorkloadResults: [],
+          createdWorkloadSplits: [],
+          error: `本次 executionBatch 的溯源记录缺少条件 ${anchor}，重试与首次执行不一致，拒绝执行`
+        };
+      }
+      const recordedResult = context.existingWorkloadResults.get(recorded.childResultId);
+      if (!recordedResult || isBusinessRevoked(recordedResult)) {
+        return {
+          success: false,
+          createdRelations: [],
+          createdWorkloadResults: [],
+          createdWorkloadSplits: [],
+          error: `本批次子项 ${anchor} 此前复用/产出的结果 ${recorded.childResultId} 已不存在或已被撤回（D-154），同一执行的 retry 不得静默更换身份；请重新确认拆分（新决策 = 新批次，按当前事实重建）`
+        };
+      }
+      reuseByAnchor.set(anchor, recorded.childResultId);
+    }
+  } else if ((context.existingSplitProvenances?.length ?? 0) > 0) {
+    const matches = matchReusableChildren({
+      provenanceRecords: context.existingSplitProvenances ?? [],
+      origin: {
+        parentWorkloadResultId: parentResultId,
+        resultSetId: parentResult.resultSetId,
+      },
+      existingResults: context.existingWorkloadResults,
+      children: proposedConditions,
+    });
+    proposedConditions.forEach((condition, index) => {
+      if (matches[index] !== undefined) {
+        reuseByAnchor.set(`${condition.resultSetId}::${condition.resultItemId}`, matches[index]!);
+      }
+    });
+  }
+
+  // 7. 构造待建立的 Split Relation 信息
+  // 顺序与 splitResult.childResults 对应；复用子项的 childWorkloadResultId = 被复用的既有结果 ID
+  //（复用子项同样需要本执行上下文的 workload_split Relation，把既有卡接入本次父卡的拆分层）
+  const pendingSplitRelations: PendingSplitRelation[] = splitResult.childResults.map((childResult) => {
+    const anchor = `${childResult.resultSetId}::${childResult.resultItemId}`;
+    const reusedResultId = reuseByAnchor.get(anchor);
+    return {
+      parentWorkloadCardId,
+      childWorkloadResultId: reusedResultId ?? childResult.id,
+    };
+  });
+
+  // 7.5 R3 结果装配：复用子项不产生新 WorkloadResult / 新 WorkloadSplit 记录
+  //（新统计事实只在"无存活匹配产物"时创建；复用 = 引用既有结果，D-157 规则 B）。
+  // 溯源记录覆盖全部子项（新创建与复用），供后续批次匹配与本批次 retry 身份校验。
+  const reusedAnchors = new Set(reuseByAnchor.keys());
+  const createdWorkloadResults = splitResult.childResults.filter(
+    (childResult) => !reusedAnchors.has(`${childResult.resultSetId}::${childResult.resultItemId}`)
+  );
+  const createdWorkloadSplits = splitResult.workloadSplits.filter((split) => {
+    const childResult = splitResult.childResults.find((r) => r.id === split.childResultId);
+    if (!childResult) return true;
+    return !reusedAnchors.has(`${childResult.resultSetId}::${childResult.resultItemId}`);
+  });
+  const finalChildResultIds = pendingSplitRelations.map((pending) => pending.childWorkloadResultId);
+  const splitProvenance = buildSplitProvenance({
+    executionBatchId,
+    parentResultId,
+    resultSetId: parentResult.resultSetId,
+    conditions: proposedConditions.map((condition, index) => ({
+      childResultId: finalChildResultIds[index],
+      resultSetId: condition.resultSetId,
+      resultItemId: condition.resultItemId,
+      dimensions: condition.dimensions,
+    })),
+  });
+  const reusedChildResultIds = finalChildResultIds.filter((id, index) =>
+    reuseByAnchor.has(`${proposedConditions[index].resultSetId}::${proposedConditions[index].resultItemId}`)
+  );
 
 // 7. 所有验证通过，构造返回结果
   // ActionExecutor 不直接修改 context 中的持久化事实集合
   // 由上层 ActionSubmissionService / DataService 负责持久化
-  const createdWorkloadResults: WorkloadResult[] = splitResult.childResults;
-  const createdWorkloadSplits: WorkloadSplit[] = splitResult.workloadSplits;
-
   return {
     success: true,
     createdRelations: [],
@@ -638,6 +745,8 @@ export function executeSplitWorkload(
     createdWorkloadSplits,
     pendingSplitRelations,
     executionBatchId,
+    splitProvenance,
+    reusedChildResultIds,
   };
 }
 

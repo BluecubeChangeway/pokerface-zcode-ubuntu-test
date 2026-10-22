@@ -105,56 +105,85 @@ export async function submitActionResult(
   const childResultIdToCardId = new Map<string, string>();
   
   if (result.pendingSplitRelations && result.pendingSplitRelations.length > 0) {
-    // 阶段 B：为每个 child WorkloadResult 创建 WorkloadCard
-    // 幂等性：基于 recommendationId + childWorkloadResultId 生成稳定的 Card ID
-    // 遵循 D-120：不做全局 workloadResultId 去重，同一 Result 可被多个 Card 引用
-    // Retry 时：同一 recommendationId + childWorkloadResultId 生成相同的 Card ID，复用而非新建
-    
-    for (const pending of result.pendingSplitRelations) {
-      // 找到对应的 child WorkloadResult
-      const childResult = result.createdWorkloadResults.find(r => r.id === pending.childWorkloadResultId);
-      if (!childResult) {
-        throw new Error(`Child WorkloadResult ${pending.childWorkloadResultId} not found in createdWorkloadResults`);
-      }
+    // 阶段 B：为每个 child WorkloadResult 确定 WorkloadCard 身份并创建缺失卡片。
+    //
+    // 身份解析顺序（R3 复用 + D-143 retry 幂等）：
+    //   a) 已有**存活**卡片引用该结果 → 复用该卡 ID（R3 Q2 批复：复用子项不建第二张卡；
+    //      second-card 用户路径仍 D-148 CASE/SEE 暂缓；新子项的命中只可能来自本批次
+    //      此前部分持久化——其卡 ID 本就是稳定 ID，与 b) 结果一致，行为不变）；
+    //   b) 否则 generateStableCardId(recommendationId, childResultId)（D-143：
+    //      retry 同 ID upsert 同一卡）。
+    const existingCardsForReuse = await dataService.getCards();
 
-      // 幂等性：基于 recommendationId + childWorkloadResultId 生成稳定的 Card ID
-      // Retry 时同一 recommendationId + childWorkloadResultId 生成相同 Card ID，复用而非新建
-      const childCardId = generateStableCardId(recommendationId, pending.childWorkloadResultId);
-      
-      // 检查本次提交中是否已为该 childWorkloadResultId 创建过 Card
+    for (const pending of result.pendingSplitRelations) {
+      // 同一 childResultId 可能出现多条 pending（去重；沿用原逻辑）
       if (childResultIdToCardId.has(pending.childWorkloadResultId)) {
-        // 本次提交中已创建过该子结果的 Card，复用
-        const existingChildCardId = childResultIdToCardId.get(pending.childWorkloadResultId)!;
-      } else {
-        // 创建新的 child WorkloadCard
-        // 注意：不复制 WorkloadResult.value 作为事实源，只通过 workloadResultId 引用
-        // sourceSummary.dataObjectId 使用真实的 ResultSet 来源，不写空字符串
-        let sourceDataObjectId: string | undefined;
+        continue;
+      }
+      const aliveExistingCard = existingCardsForReuse.find(
+        (card) =>
+          card.type === "workload" &&
+          (card as WorkloadCard).workloadResultId === pending.childWorkloadResultId &&
+          (card as any).businessStatus !== "revoked"
+      );
+      const childCardId = aliveExistingCard
+        ? aliveExistingCard.id
+        : generateStableCardId(recommendationId, pending.childWorkloadResultId);
+      childResultIdToCardId.set(pending.childWorkloadResultId, childCardId);
+
+      // 既有存活卡已承担该结果 → 复用，不新建（R3 复用子项的主路径）
+      if (aliveExistingCard) {
+        continue;
+      }
+      // 稳定 ID 对应的卡已存在（本批次此前部分持久化的同 ID 卡）→ upsert 同一对象即幂等，
+      // 重建对象再保存与跳过等价；这里保持原行为：重建并保存（内容全同，幂等）
+      const childResult = result.createdWorkloadResults.find(
+        (r) => r.id === pending.childWorkloadResultId
+      );
+      // 注意：不复制 WorkloadResult.value 作为事实源，只通过 workloadResultId 引用
+      // sourceSummary.dataObjectId 使用真实的 ResultSet 来源，不写空字符串
+      let sourceDataObjectId: string | undefined;
+      let periodForCard: WorkloadResult["period"] | undefined;
+      if (childResult) {
+        periodForCard = childResult.period;
         if (childResult.resultSetId) {
           const resultSets = await dataService.getResultSets();
-          const resultSet = resultSets.find(rs => rs.id === childResult.resultSetId);
+          const resultSet = resultSets.find((rs) => rs.id === childResult.resultSetId);
           if (resultSet?.sourceDataObjectId) {
             sourceDataObjectId = resultSet.sourceDataObjectId;
           }
         }
-
-        const childCard: WorkloadCard = {
-          id: childCardId,
-          type: "workload",
-          name: childResult.name,
-          workloadResultId: childResult.id,
-          configurationState: "configured",
-          // 不复制 value：WorkloadCard 通过 workloadResultId 引用 WorkloadResult，不持有独立事实
-          sourceSummary: sourceDataObjectId ? {
-            dataObjectId: sourceDataObjectId,
-            period: childResult.period,
-          } : undefined,
-          metadata: {},
-        };
-
-        newCards.push(childCard);
+      } else {
+        // R3 复用子项（引用既有结果，不在 createdWorkloadResults 中）且无存活卡：
+        // 经既有结果取来源信息（边缘场景：结果存活但卡缺失）
+        const results = await dataService.getWorkloadResults();
+        const reusedResult = results.find((r) => r.id === pending.childWorkloadResultId);
+        if (reusedResult) {
+          periodForCard = reusedResult.period;
+          if (reusedResult.resultSetId) {
+            const resultSets = await dataService.getResultSets();
+            const resultSet = resultSets.find((rs) => rs.id === reusedResult.resultSetId);
+            if (resultSet?.sourceDataObjectId) {
+              sourceDataObjectId = resultSet.sourceDataObjectId;
+            }
+          }
+        }
       }
-      childResultIdToCardId.set(pending.childWorkloadResultId, childCardId);
+
+      const childCard: WorkloadCard = {
+        id: childCardId,
+        type: "workload",
+        name: childResult?.name ?? pending.childWorkloadResultId,
+        workloadResultId: pending.childWorkloadResultId,
+        configurationState: "configured",
+        // 不复制 value：WorkloadCard 通过 workloadResultId 引用 WorkloadResult，不持有独立事实
+        sourceSummary: sourceDataObjectId
+          ? { dataObjectId: sourceDataObjectId, period: periodForCard }
+          : undefined,
+        metadata: {},
+      };
+
+      newCards.push(childCard);
     }
 
     // 保存 child WorkloadCard
@@ -266,6 +295,12 @@ export async function submitActionResult(
   // 保存 WorkloadSplit
   if (result.createdWorkloadSplits.length > 0) {
     await dataService.saveWorkloadSplits(result.createdWorkloadSplits);
+  }
+
+  // R3 拆分溯源落盘（查询投影：upsert by id = executionBatchId，重试幂等收敛；
+  // 撤回不删除——历史记录，后续复用匹配按产物存活状态过滤，D-154）
+  if (result.splitProvenance) {
+    await dataService.saveSplitProvenances([result.splitProvenance]);
   }
 }
 

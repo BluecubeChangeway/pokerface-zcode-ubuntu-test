@@ -9,6 +9,7 @@ import type {
 } from "../domain/score/types";
 import type { WorkloadDefinition, WorkloadExecution } from "../domain/workload/types";
 import type { CalculationSnapshot, ResultSet, WorkloadResult, WorkloadSplit } from "../domain/workload/types";
+import type { SplitProvenanceRecord } from "../domain/workload/splitProvenance";
 import {
   mockCalculationSnapshots,
   mockResultSets,
@@ -34,6 +35,8 @@ let workloadSplitsStore: WorkloadSplit[] = [];
 let cardsStore = [...mockCards];
 // CalculationResult 可写存储（D-154：撤回显式失效经 upsert 表达；初始为 mock 数据副本）
 let calculationResultsStore: CalculationResult[] = [...mockCalculationResults];
+// 拆分溯源存储（R3：confirm_split 持久化阶段写入；upsert by id；撤回不删除——历史记录）
+let splitProvenancesStore: SplitProvenanceRecord[] = [];
 
 export class MockDataService implements DataService {
   async getCards(): Promise<AnyCard[]> {
@@ -106,6 +109,21 @@ export class MockDataService implements DataService {
 
   async getWorkloadSplits(): Promise<WorkloadSplit[]> {
     return workloadSplitsStore;
+  }
+
+  async getSplitProvenances(): Promise<SplitProvenanceRecord[]> {
+    return splitProvenancesStore;
+  }
+
+  async saveSplitProvenances(records: SplitProvenanceRecord[]): Promise<void> {
+    for (const record of records) {
+      const existingIndex = splitProvenancesStore.findIndex((r) => r.id === record.id);
+      if (existingIndex >= 0) {
+        splitProvenancesStore[existingIndex] = record;
+      } else {
+        splitProvenancesStore.push(record);
+      }
+    }
   }
 
   // 批量事实持久化（Q-09-C P0）

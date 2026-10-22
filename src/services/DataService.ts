@@ -9,6 +9,7 @@ import type {
 } from "../domain/score/types";
 import type { WorkloadDefinition, WorkloadExecution } from "../domain/workload/types";
 import type { CalculationSnapshot, ResultSet, WorkloadResult, WorkloadSplit } from "../domain/workload/types";
+import type { SplitProvenanceRecord } from "../domain/workload/splitProvenance";
 
 export interface DataService {
   getCards(): Promise<AnyCard[]>;
@@ -25,6 +26,13 @@ export interface DataService {
   getResultSets(): Promise<ResultSet[]>;
   getWorkloadResults(): Promise<WorkloadResult[]>;
   getWorkloadSplits(): Promise<WorkloadSplit[]>;
+  /**
+   * 拆分溯源记录（R3，D-157 规则 B 实施的查询投影）：
+   * 每次拆分执行一条（id = executionBatchId）；upsert 幂等，重试收敛；
+   * 撤回不删除溯源（历史记录，复用匹配按产物存活状态过滤，D-154）。
+   */
+  getSplitProvenances(): Promise<SplitProvenanceRecord[]>;
+  saveSplitProvenances(records: SplitProvenanceRecord[]): Promise<void>;
 
   // 批量事实持久化（Q-09-C P0）
   saveRelations(relations: Relation[]): Promise<void>;

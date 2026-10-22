@@ -45,6 +45,7 @@ import {
   revokeDerivedPathAsPreviewed,
   revokeSplitLayer,
 } from "../services/revocationEntry";
+import { previewSplitReuse } from "../services/splitReusePreview";
 import type { WorkloadRevocationImpact } from "../domain/workload/revocationService";
 
 
@@ -169,6 +170,29 @@ export function App() {
   }, [selectedRecommendationId]);
   const executingAction = recommendationStore.getState().executingAction;
   const [actionError, setActionError] = useState<string | undefined>(undefined);
+
+  // ---- R3 Q3 复用可见性：确认拆分前只读预览（面板可见，不静默复用）----
+  const [reusePreview, setReusePreview] = useState<(string | undefined)[] | undefined>(undefined);
+  useEffect(() => {
+    if (confirmAction !== "confirm_split" || !splitDraft) {
+      setReusePreview(undefined);
+      return;
+    }
+    let alive = true;
+    const parameters = buildSplitParameters(splitDraft);
+    previewSplitReuse(dataService, splitDraft.parentResultId, parameters.children)
+      .then((preview) => {
+        if (alive) setReusePreview(preview);
+      })
+      .catch(() => {
+        // 预览是提示信息：失败不渲染提示、不阻塞确认（执行时以实时事实为准）
+        if (alive) setReusePreview(undefined);
+      });
+    return () => {
+      alive = false;
+    };
+    // splitDraft 随用户编辑变化 → 预览随之刷新（本地只读查询，代价可忽略）
+  }, [confirmAction, splitDraft]);
 
   const handleConfirm = async () => {
     if (!selectedRecommendation || !confirmAction || executingAction) return;
@@ -539,6 +563,12 @@ export function App() {
                 style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #ddd", fontSize: 12 }}
               >
                 <div>拆分参数（正式执行参数，初始值来自系统建议）</div>
+                {reusePreview !== undefined && reusePreview.some((id) => id !== undefined) && (
+                  <div data-testid="split-reuse-summary" style={{ marginTop: 4, color: "#262" }}>
+                    本次拆分将复用 {reusePreview.filter((id) => id !== undefined).length} 个既有产物
+                    （同源 + 同筛选条件 = 相同拆分过程；新名将不生效）
+                  </div>
+                )}
                 <div data-testid="split-parent-result">parentResultId: {splitDraft.parentResultId}</div>
                 {splitDraft.children.map((child, index) => (
                   <div
@@ -600,6 +630,11 @@ export function App() {
                         }}
                       />
                     </label>
+                    {reusePreview?.[index] !== undefined && (
+                      <div data-testid={`split-child-reuse-${index}`} style={{ color: "#262" }}>
+                        ♻ 将复用既有结果（本行输入的新名称将不生效）
+                      </div>
+                    )}
                   </div>
                 ))}
                 <label style={{ marginTop: 6, display: "block" }}>

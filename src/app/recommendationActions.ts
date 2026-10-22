@@ -57,11 +57,12 @@ export async function buildActionContext(
   storeRecommendations: Recommendation[],
   workloadCard?: { id: string; type: string; name: string; workloadResultId?: string; businessStatus?: "active" | "revoked" }
 ): Promise<ActionExecutorContext> {
-  const [relations, cards, results, splits] = await Promise.all([
+  const [relations, cards, results, splits, provenances] = await Promise.all([
     dataService.getRelations(),
     dataService.getCards(),
     dataService.getWorkloadResults(),
     dataService.getWorkloadSplits(),
+    dataService.getSplitProvenances(),
   ]);
   const recommendations = new Map(
     storeRecommendations.map((recommendation) => [recommendation.id, recommendation])
@@ -89,6 +90,8 @@ export async function buildActionContext(
     existingWorkloadSplits: new Map(
       splits.map((sp: any) => [sp.id, sp])
     ),
+    // R3 拆分溯源（查询投影）：confirm_split 复用匹配 + retry 身份校验的数据来源
+    existingSplitProvenances: [...provenances],
     recommendations,
     endpointKinds: new Map(cards.map((c: any) => [c.id, c.type])),
     dataService,

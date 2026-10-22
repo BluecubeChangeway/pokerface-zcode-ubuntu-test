@@ -29,7 +29,7 @@
 
 ## 3. 当前状态（一句话）
 
-**2026-10-22 第二轮：App 已接入本地文件夹存储（R4a-2 完成，方案 B 演示数据策略）——`npm run server` + `npm run dev:local` 即用落盘数据，日常开发仍可用内存版；基线 454/454（29 文件）全绿。下一项：R3 拆分溯源设计报告（A-003 语义已裁定）已呈报待用户复核，随后按批复实施；浏览器端全链路 QA（browser-use）留待 UI 阶段。**
+**2026-10-22 第三轮：R3 拆分溯源与跨批次复用**实施完成**（D-157 规则 B 核心落地：同源+同条件=复用，卡片不再无意义增长）——三场景验算 + retry 纪律 5 项测试全绿，全量 459/459（30 文件）。下一候选：浏览器端全链路 QA（browser-use 实测 dev:local + 复用面板）、R4b 闲时备份设计、正式 UI 阶段等待用户设计输入。**
 
 ## 2.5 开发推进记录
 
@@ -40,6 +40,7 @@
 | R1b+R2 | 2026-10-21 | 用户四项裁决落地：A-001→方案 B（重推范围纳入 retained 子卡配对）；R2 移动/解除关系运行时服务（moveRelationEntry：解除软删 + 幂等新建 + 旧配对反馈失效 + 新配对自动重推，submitMoveAssignRelation 持久化入口） | revocationAutoResubmit 7 项更新 + moveRelation.test.ts 8 项全绿；全量 439/439（26 文件） | 见 git log "R2:" |
 | 裁决关闭+R4a | 2026-10-22 | CONFLICT-001 经用户澄清关闭（"罪恶之树"指向完全撤回=D-158 已实现语义；D-153 层撤回维持不变，零代码变更）；R4a 本地文件夹存储引擎完成（用户修订：不进浏览器、存指定文件夹）：local-server/server.mjs（零依赖 Node 服务、原子写、损坏保护、重启恢复）+ LocalFolderDataService 适配器 + npm run server | localFolderDataService.test.ts 7 项全绿（upsert 等价/删除 no-op/按 id getter/重启持久化/空态不伪造/损坏保护）；全量 446/446（27 文件）；独立进程冒烟实测：落盘 JSON 人可检视、杀进程重启数据完整恢复 | 见 git log "R4a:" |
 | R4a-2 | 2026-10-22 | App 接入本地文件夹存储（方案 B：空文件夹首启空白 + 一键灌入/清除演示数据，清除精确按演示链 id、用户自建数据不受影响）：runtimeDataService 双档工厂（VITE_DATA_BACKEND，mock 档复用既有单例——既有 spy 测试零扰动）+ demoSeeder + App 数据源面板（后端标识/连接错误/播种按钮）+ dev:local 脚本 + vite-env 类型声明 | runtimeBackend.test.ts 6 项（工厂双档/播种全集合/幂等/清除保用户数据）+ dataSourcePanel.dom.test.ts 2 项全绿；全量 454/454（29 文件）/ typecheck / build 全绿 | 见 git log "R4a-2:" |
+| R3 | 2026-10-22 | **拆分溯源与跨批次复用实施完成**（用户批准设计 + Q1～Q3 批复：渠道=取用科室经 dimensions / 复用忽略新名 / 面板可见展示）：SplitProvenanceRecord 溯源（随 confirm_split 落盘、撤回不删、upsert 幂等）+ 执行器复用判定（同源+同锚点+同维度+同内容且存活 → 复用；retry 身份纪律：产物死亡明确拒绝不换身份）+ 提交阶段存活卡复用（不建第二张卡）+ previewSplitReuse 确认面板可见展示；DataService 接口 +2 方法（Mock/Local/服务端第 14 集合） | splitReuse.test.ts 5 项（两科室同拆复用/层撤回后重拆 retained 复用+失效新建/部分选择按需复用/同批次重试幂等/产物死亡重试拒绝）全绿；splitReconfirm.dom 按裁定语义重锚定（保留防覆盖守卫）；全量 459/459（30 文件）/ typecheck / build 全绿 | 见 git log "R3:" |
 
 **待裁决（无）**：CONFLICT-001 已于 2026-10-22 经用户澄清关闭，现行语义与用户确认完全一致。
 
