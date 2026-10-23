@@ -142,6 +142,12 @@ function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body),
+    // CORS（本地单用户服务）：界面与数据服务可能运行在不同端口/主机
+    //（dev:local 即为典型场景——浏览器实测发现缺失会致 "Failed to fetch"）。
+    // 开放范围仅本服务的读写 API；凭据模式不需要（无 Cookie/鉴权）。
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
   });
   res.end(body);
 }
@@ -162,6 +168,10 @@ export async function createLocalServer({ port = DEFAULT_PORT, dataDir }) {
   const handler = async (req, res) => {
     const url = new URL(req.url === "/" ? "/api/health" : req.url, "http://localhost");
     try {
+      // CORS 预检（浏览器跨源非简单请求先发 OPTIONS）：直接放行
+      if (req.method === "OPTIONS") {
+        return sendJson(res, 204, { ok: true });
+      }
       if (req.method === "GET" && url.pathname === "/api/health") {
         return sendJson(res, 200, { ok: true, dataDir: dir });
       }

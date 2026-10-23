@@ -40,10 +40,16 @@ let bootstrapped = false;
  * 幂等保证（两层）：
  * 1. upsertCardPlacement 以 cardId 为唯一身份（同 cardId 后写覆盖，不追加第二条）；
  * 2. 模块级 bootstrapped 标记使初始化逻辑本身只执行一次。
+ *
+ * 先置标记风险修复（PROJECT_STATUS §16 原 Deferred 项"真实持久化适配器临近时处理"——
+ * R4a-2 本地文件夹后端上线后该风险已可触发，2026-10-23 浏览器实测证实并修复）：
+ * 空文件夹首启时第一次取数为空，若此时即消耗一次性标记，"灌入演示数据"后
+ * 画布将不再初始化（须手动刷新才能看到单元卡）。修复 = 仅在**真正放置了
+ * 至少一张卡**后才置标记——空数据不消耗机会；upsert 幂等保证重复调用安全。
  */
 export function ensureCanvasBootstrapped(cards: AnyCard[]): void {
   if (bootstrapped) return;
-  bootstrapped = true;
+  let placed = 0;
   for (const unitId of BOOTSTRAP_UNIT_IDS) {
     const unit = cards.find((c): c is UnitCard => c.id === unitId && c.type === "unit");
     if (!unit) continue;
@@ -53,6 +59,10 @@ export function ensureCanvasBootstrapped(cards: AnyCard[]): void {
       x: position.x,
       y: position.y,
     });
+    placed += 1;
+  }
+  if (placed > 0) {
+    bootstrapped = true;
   }
 }
 
