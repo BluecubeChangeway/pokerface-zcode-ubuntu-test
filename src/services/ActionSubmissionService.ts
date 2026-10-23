@@ -388,3 +388,18 @@ export async function submitMoveAssignRelation(
   }
   return { outcome: duplicate ? "reused" : "persisted", relation: duplicate ?? newRelation };
 }
+
+/**
+ * 解除关系持久化入口（R3 轮 A-002b：拖出槽外 = 解除，用户 2026-10-23 裁定）。
+ * 被解除关系软删除落盘（同 ID upsert → active=false，行保留审计——与撤回的关系
+ * 软删语义一致，不做物理删除）。重试安全：已 inactive 的行重复 upsert 无变化。
+ *
+ * 本入口不做 Relation 查找/校验（调用方 moveRelationEntry.unassignWorkloadCard
+ * 负责），不涉及 WorkloadResult / WorkloadCard / WorkloadSplit / Recommendation。
+ */
+export async function submitUnassignRelation(
+  deactivatedRelation: Relation,
+  dataService: DataService
+): Promise<void> {
+  await dataService.saveRelations([deactivatedRelation]);
+}

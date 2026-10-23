@@ -442,6 +442,13 @@ export const mockOutpatientResultSet: ResultSet = {
     { id: "ri-outpatient-orthopedics", value: 980, dimensions: { departmentId: "unit-orthopedics" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
     { id: "ri-outpatient-emergency", value: 2100, dimensions: { departmentId: "unit-emergency" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
     { id: "ri-outpatient-internal", value: 1400, dimensions: { departmentId: "unit-internal-medicine" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
+    // 医生粒度行（2026-10-23 演示链增补，D-065 混合粒度合法）：
+    // 数字为演示链既有事实（王XX 200 / 李XX 220 门诊人次，见各自 WorkloadResult），
+    // 按 def-outpatient-visits 声明的 doctorId 维度挂入本科室统计集——
+    // 不含 departmentId（医生粒度行的科室归属由医生归属表达），作为
+    // "按医生拆分"（D-122 拆分补充能力）的映射证据来源（D-125）。
+    { id: "ri-outpatient-doctor-wang", value: 200, dimensions: { doctorId: "unit-wang-xx" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
+    { id: "ri-outpatient-doctor-li", value: 220, dimensions: { doctorId: "unit-li-xx" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
     { id: "ri-outpatient-total", value: 4002, dimensions: {}, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
   ]
 };

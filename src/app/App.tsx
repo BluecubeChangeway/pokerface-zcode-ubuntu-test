@@ -7,9 +7,12 @@ import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import { deckStore } from "../stores/deckStore";
 import { mockSlots } from "../mock/mockCards";
-import type { AnyCard, CardSlot, CardType } from "../domain/card/types";
+import type { AnyCard, CardSlot, CardType, WorkloadCard } from "../domain/card/types";
+import type { Relation } from "../domain/relation/types";
 import {
   onWorkloadCardDragStart,
+  onWorkloadCardDropOutsideSlots,
+  onWorkloadCardSlotDragStart,
   onWorkloadCardSlotDrop,
   type DataTransferLike,
 } from "./dropInteraction";
@@ -65,23 +68,32 @@ import type { WorkloadRevocationImpact } from "../domain/workload/revocationServ
 const CARD_GROUPS: CardType[] = ["unit", "workload", "budget"];
 const PLACEHOLDER = "（无）";
 
-function useCards(): { cards: AnyCard[]; bootError: string | undefined; reload: () => void } {
+function useCards(): {
+  cards: AnyCard[];
+  relations: Relation[];
+  bootError: string | undefined;
+  reload: () => void;
+} {
   const [cards, setCards] = useState<AnyCard[]>([]);
+  const [relations, setRelations] = useState<Relation[]>([]);
   const [bootError, setBootError] = useState<string | undefined>(undefined);
   const [refreshToken, setRefreshToken] = useState(0);
   useEffect(() => {
     let alive = true;
-    dataService.getCards().then((result) => {
-      if (alive) {
-        setCards(result);
-        ensureCanvasBootstrapped(result);
-      }
-    }).catch((error) => {
-      // 本地后端连接失败等启动异常：如实呈现，不静默空白
-      if (alive) {
-        setBootError(error instanceof Error ? error.message : String(error));
-      }
-    });
+    Promise.all([dataService.getCards(), dataService.getRelations()])
+      .then(([cardResult, relationResult]) => {
+        if (alive) {
+          setCards(cardResult);
+          setRelations(relationResult);
+          ensureCanvasBootstrapped(cardResult);
+        }
+      })
+      .catch((error) => {
+        // 本地后端连接失败等启动异常：如实呈现，不静默空白
+        if (alive) {
+          setBootError(error instanceof Error ? error.message : String(error));
+        }
+      });
     return () => {
       alive = false;
     };
@@ -89,11 +101,11 @@ function useCards(): { cards: AnyCard[]; bootError: string | undefined; reload: 
   const reload = useCallback(() => {
     setRefreshToken((token) => token + 1);
   }, []);
-  return { cards, bootError, reload };
+  return { cards, relations, bootError, reload };
 }
 
 export function App() {
-  const { cards, bootError, reload } = useCards();
+  const { cards, relations, bootError, reload } = useCards();
 
   // ---- 数据来源面板（R4a-2 本地文件夹存储接入；最小功能面板，非正式 UI）----
   const localDataService = dataService instanceof LocalFolderDataService ? dataService : undefined;
@@ -336,10 +348,15 @@ export function App() {
     )
       .then((result) => {
         // D-150 规则 4：持久化失败不得伪报成功——失败结果复用既有 actionError 通道透出。
-        // 无效 Drop（ignored）保持静默（AGENTS §20）。
-        if (result.outcome === "relation_failed") {
-          setActionError(result.error);
+        if (result.outcome === "relation_failed" || result.outcome === "move_failed") {
+          setActionError("error" in result && result.error ? result.error : "操作未成功");
+          return;
         }
+        // 建立关系（D-150 resolved）或槽间移动（A-002 moved）成功 → 刷新槽内卡显示
+        if (result.outcome === "resolved" || result.outcome === "moved") {
+          reload();
+        }
+        // ignored（无效 Drop）与 no_op_same_unit（放回原槽）：静默，零变化（AGENTS §20 / A-002b）
       })
       .catch((error) => {
         // Resolution 阶段异常：关系事实已成立，异常如实透出，不静默吞掉
@@ -350,11 +367,55 @@ export function App() {
     // 原生 DnD 需要 dragOver preventDefault 才允许 drop；无业务语义
     event.preventDefault();
   };
+  // A-002b 槽外解除：画布空白 / 卡牌盒 drop → 拖出槽外的卡解除关系（以最终位置判定）
+  const handleDropOutsideSlots = (event: ReactDragEvent) => {
+    event.preventDefault();
+    void onWorkloadCardDropOutsideSlots(
+      dataService,
+      event.dataTransfer as unknown as DataTransferLike
+    )
+      .then((result) => {
+        if (result.outcome === "unassigned") {
+          reload(); // 解除成功 → 刷新槽内卡显示
+        }
+        // no_op（本无关系）/ ignored（Deck 来源拖到槽外）：静默
+      })
+      .catch((error) => {
+        setActionError(error instanceof Error ? error.message : String(error));
+      });
+  };
+
+  // 槽内已挂工作量卡（A-002b 槽内容渲染 + 拖出源）：relations 是唯一事实源（D-001），
+  // 经 active workload_assign 投影；D-154：revoked 卡业务世界不存在，不出现在槽内
+  const assignedWorkloadCardsOf = (unitCardId: string) => {
+    const assignedCardIds = relations
+      .filter(
+        (relation) =>
+          relation.active &&
+          relation.type === "workload_assign" &&
+          relation.sourceId === unitCardId
+      )
+      .map((relation) => relation.targetId);
+    return assignedCardIds
+      .map((cardId) => {
+        const card = cardById(cards, cardId);
+        const workloadCard = asWorkloadCard(card);
+        return workloadCard ? { card: workloadCard } : undefined;
+      })
+      .filter((entry): entry is { card: WorkloadCard } => entry !== undefined);
+  };
 
   return (
     <main style={{ fontFamily: "sans-serif", padding: 24, display: "flex", gap: 48 }}>
-      {/* Deck：真实 Card 数据（activeType 切换 CardGroup） */}
-      <section aria-label="deck" style={{ width: 220 }}>
+      {/* Deck：真实 Card 数据（activeType 切换 CardGroup）。
+          A-002b：Deck 区域同时是"槽外解除"目标——从槽内拖出的卡在卡牌盒松开 = 解除 */}
+      <section
+        aria-label="deck"
+        data-testid="deck-root"
+        style={{ width: 220 }}
+        onDragOver={makeSlotDragOverHandler()}
+        onDrop={handleDropOutsideSlots}
+      >
         <h2>Deck</h2>
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           {CARD_GROUPS.map((group) => (
@@ -402,10 +463,16 @@ export function App() {
         </div>
       </section>
 
-      {/* Canvas：canvasStore.cards（placement）→ 真实 UnitCard → 动态 Slot */}
+      {/* Canvas：canvasStore.cards（placement）→ 真实 UnitCard → 动态 Slot。
+          A-002b：画布空白区域同时是"槽外解除"目标——从槽内拖出的卡在空白处松开 = 解除 */}
       <section aria-label="canvas" style={{ flex: 1 }}>
         <h2>Canvas</h2>
-        <div style={{ position: "relative", width: 520, height: 400, border: "1px solid #999" }}>
+        <div
+          data-testid="canvas-root"
+          style={{ position: "relative", width: 520, height: 400, border: "1px solid #999" }}
+          onDragOver={makeSlotDragOverHandler()}
+          onDrop={handleDropOutsideSlots}
+        >
           {placements.map((placement) => {
             const card = cardById(cards, placement.cardId);
             const unitCard = asUnitCard(card);
@@ -443,6 +510,33 @@ export function App() {
                       }}
                     >
                       {slot.type === "workload" ? "Workload Slot" : `${slot.type} Slot`}
+                      {/* A-002b 槽内容：已挂工作量卡（active workload_assign 投影，D-001 Relations 唯一事实源）。
+                          槽内卡可拖出：落其他槽 = 移动（A-002）、落槽外 = 解除（A-002b）、落回原槽 = no-op */}
+                      {slot.type === "workload" &&
+                        assignedWorkloadCardsOf(unitCard.id).map(({ card }) => (
+                          <div
+                            key={card.id}
+                            data-testid={`slot-chip-${unitCard.id}-${card.id}`}
+                            draggable
+                            onDragStart={(event) =>
+                              onWorkloadCardSlotDragStart(
+                                event.dataTransfer as unknown as DataTransferLike,
+                                card.id,
+                                unitCard.id
+                              )
+                            }
+                            style={{
+                              marginTop: 4,
+                              padding: "2px 6px",
+                              fontSize: 11,
+                              background: "#cfe3cf",
+                              borderRadius: 4,
+                              cursor: "grab",
+                            }}
+                          >
+                            {card.name}
+                          </div>
+                        ))}
                     </div>
                   ))}
                 </div>

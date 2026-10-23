@@ -122,7 +122,12 @@ export function deriveMappingEvidences(
   const evidences: MappingEvidence[] = [];
   const seenChildUnitIds = new Set<string>();
   for (const item of resultSet.items) {
-    const unitValue = item.dimensions.departmentId ?? item.dimensions.wardId;
+    // 维度键序：departmentId → wardId → doctorId。
+    // doctorId 通道（2026-10-23 增补）：人员也是 UnitCard（AGENTS §5），"按医生拆分"
+    // 是 D-122 拆分补充能力的标准场景——医生粒度的统计行（不含科室/病区维度时）
+    // 即为按医生子单元拆分的映射证据（D-125 证据门不变：仍要求全部子单元有证据）。
+    const unitValue =
+      item.dimensions.departmentId ?? item.dimensions.wardId ?? item.dimensions.doctorId;
     if (!unitValue) continue;
     if (!targetChildUnitIds.includes(unitValue)) continue;
     if (seenChildUnitIds.has(unitValue)) continue;

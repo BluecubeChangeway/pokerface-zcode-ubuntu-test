@@ -4,7 +4,7 @@ import type { Relation } from "../domain/relation/types";
 import type { RelationEndpointKind } from "../domain/relation/endpointRules";
 import { isBusinessRevoked } from "../domain/workload/revocationService";
 import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
-import { submitMoveAssignRelation } from "./ActionSubmissionService";
+import { submitMoveAssignRelation, submitUnassignRelation } from "./ActionSubmissionService";
 import { recommendationStore } from "../stores/recommendationStore";
 import { v4 as uuidv4 } from "uuid";
 
@@ -199,6 +199,81 @@ export async function moveWorkloadCardAssignment(
     relation: submission.relation,
     relationOutcome: submission.outcome,
     resubmittedResolution: { workloadCardId, targetUnitId: toUnitId },
+    invalidatedRecommendationIds,
+  };
+}
+
+/**
+ * 解除关系运行时入口（A-002b，用户 2026-10-23 裁定：拖出槽外 = 解除，
+ * 置于画布/卡牌盒 = 纯解除不建新关系）。
+ *
+ * 语义边界（与移动入口同族、互不合并）：
+ * - 解除 = 旧 workload_assign 软删除（active=false 留痕审计，非物理删）；
+ * - 解除后该配对无有效关系 → D-151 无可分析的有效业务上下文 → **不自动重推**
+ *   （区别于移动：移动的新配对有有效关系，才触发自动重新 Resolution）；
+ * - 配对级失效：移除锚定为 (卡, fromUnit) 的 recommended resolution 反馈
+ *   （D-151：关系已解除，当前反馈不保留、不提示）；accepted/ignored/dismissed
+ *   历史与非 resolution kind 不触碰（同 A①/移动边界）；
+ * - 无该关系时为幂等 no-op（重复拖出/重试安全）；无效参数（卡/Unit 不存在、
+ *   revoked）静默 ignored（对齐 AGENTS §20）。
+ */
+export async function unassignWorkloadCard(
+  dataService: DataService,
+  workloadCardId: string,
+  fromUnitId: string
+): Promise<{
+  outcome: "unassigned" | "no_op" | "ignored";
+  /** 被解除的关系（软删除后状态，active=false）；no-op/ignored 时为 undefined */
+  deactivatedRelation?: Relation;
+  /** 配对级失效移除的旧反馈 ID */
+  invalidatedRecommendationIds: string[];
+  error?: string;
+}> {
+  if (!workloadCardId || !fromUnitId) {
+    return { outcome: "ignored", invalidatedRecommendationIds: [] };
+  }
+  const [cards, relations] = await Promise.all([
+    dataService.getCards(),
+    dataService.getRelations(),
+  ]);
+  // D-154：revoked 卡 / Unit 业务世界中等同不存在——静默 ignored
+  const workloadCard = cards.find(
+    (c) => c.id === workloadCardId && c.type === "workload"
+  );
+  if (!workloadCard || isBusinessRevoked(workloadCard)) {
+    return { outcome: "ignored", invalidatedRecommendationIds: [] };
+  }
+  const fromUnit = cards.find((c) => c.id === fromUnitId && c.type === "unit");
+  if (!fromUnit || isBusinessRevoked(fromUnit)) {
+    return { outcome: "ignored", invalidatedRecommendationIds: [] };
+  }
+
+  // 无 active 关系 → 幂等 no-op（重复解除/重试安全）
+  const activeAssign = relations.find(
+    (r) =>
+      r.active &&
+      r.type === "workload_assign" &&
+      r.sourceId === fromUnitId &&
+      r.targetId === workloadCardId
+  );
+  if (!activeAssign) {
+    return { outcome: "no_op", invalidatedRecommendationIds: [] };
+  }
+
+  const deactivatedRelation: Relation = { ...activeAssign, active: false };
+  // 持久化（D-141：经 ActionSubmissionService 唯一持久化边界）
+  await submitUnassignRelation(deactivatedRelation, dataService);
+
+  // 持久化成功后：配对级失效（D-151：关系已解除不提示、不保留当前反馈）；
+  // 无有效关系 → 不自动重推（见函数头注释）
+  const invalidatedRecommendationIds = invalidateMoveSourceFeedback(
+    workloadCardId,
+    fromUnitId
+  );
+
+  return {
+    outcome: "unassigned",
+    deactivatedRelation,
     invalidatedRecommendationIds,
   };
 }
