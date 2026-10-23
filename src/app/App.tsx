@@ -19,7 +19,9 @@ import {
 import {
   asUnitCard,
   asWorkloadCard,
+  CANVAS_MOVE_DRAG_TYPE,
   cardById,
+  computeDropPlacement,
   deckCardsOf,
   ensureCanvasBootstrapped,
   slotsOfUnit,
@@ -341,6 +343,8 @@ export function App() {
   const makeSlotDropHandler = (slot: CardSlot) => (event: ReactDragEvent) => {
     // 原生 DnD 需要 preventDefault 才能接收 drop；无业务语义
     event.preventDefault();
+    // 槽已接管的业务拖放不再冒泡到画布根（画布根的槽外解除/重定位不重复处理）
+    event.stopPropagation();
     void onWorkloadCardSlotDrop(
       dataService,
       event.dataTransfer as unknown as DataTransferLike,
@@ -367,7 +371,40 @@ export function App() {
     // 原生 DnD 需要 dragOver preventDefault 才允许 drop；无业务语义
     event.preventDefault();
   };
-  // A-002b 槽外解除：画布空白 / 卡牌盒 drop → 拖出槽外的卡解除关系（以最终位置判定）
+  // A-002b 槽外解除 + U-UI-10 画布重定位：画布根 drop 的统一入口——
+  // 画布移动 payload（纯 UI 状态）优先；否则走槽内卡拖出的解除判定
+  const handleCanvasRootDrop = (event: ReactDragEvent) => {
+    event.preventDefault();
+    const dataTransfer = event.dataTransfer as unknown as DataTransferLike;
+    const moveCardId = dataTransfer.getData(CANVAS_MOVE_DRAG_TYPE);
+    if (moveCardId) {
+      // U-UI-10 最小版重定位：placement 是 UI 状态（D-010），同 cardId upsert 幂等
+      // 坐标非有限值（异常环境/合成事件缺省）时跳过，避免 NaN 污染 placement
+      if (!Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+        return;
+      }
+      const rect = event.currentTarget.getBoundingClientRect();
+      const placement = computeDropPlacement(event.clientX, event.clientY, {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
+      canvasStore.getState().upsertCardPlacement({ cardId: moveCardId, ...placement });
+      return;
+    }
+    void onWorkloadCardDropOutsideSlots(dataService, dataTransfer)
+      .then((result) => {
+        if (result.outcome === "unassigned") {
+          reload(); // 解除成功 → 刷新槽内卡显示
+        }
+        // no_op（本无关系）/ ignored（Deck 来源拖到槽外）：静默
+      })
+      .catch((error) => {
+        setActionError(error instanceof Error ? error.message : String(error));
+      });
+  };
+  // A-002b 槽外解除：卡牌盒 drop（Deck 区域无画布重定位语义，仅解除判定）
   const handleDropOutsideSlots = (event: ReactDragEvent) => {
     event.preventDefault();
     void onWorkloadCardDropOutsideSlots(
@@ -471,7 +508,7 @@ export function App() {
           data-testid="canvas-root"
           style={{ position: "relative", width: 520, height: 400, border: "1px solid #999" }}
           onDragOver={makeSlotDragOverHandler()}
-          onDrop={handleDropOutsideSlots}
+          onDrop={handleCanvasRootDrop}
         >
           {placements.map((placement) => {
             const card = cardById(cards, placement.cardId);
@@ -482,6 +519,17 @@ export function App() {
               <div
                 key={placement.cardId}
                 data-testid={`canvas-unit-${unitCard.id}`}
+                draggable
+                onDragStart={(event) => {
+                  // U-UI-10 画布重定位（最小版）：整卡拖动 = 纯 placement 更新（D-010 UI 状态）。
+                  // 守卫：槽内芯片发起的拖动（dragstart 冒泡到本卡）不得被当作画布移动——
+                  // 事件 target 是芯片时跳过，芯片自身 onDragStart 已携带业务 payload。
+                  if (event.target !== event.currentTarget) return;
+                  (event.dataTransfer as unknown as DataTransferLike).setData(
+                    CANVAS_MOVE_DRAG_TYPE,
+                    unitCard.id
+                  );
+                }}
                 style={{
                   position: "absolute",
                   left: placement.x,
@@ -967,5 +1015,9 @@ export function App() {
 /** 本切片用到的最小 DOM 事件形状（避免把 React 事件类型引入可测 handler 模块） */
 interface ReactDragEvent {
   preventDefault(): void;
+  stopPropagation(): void;
   dataTransfer: unknown;
+  clientX: number;
+  clientY: number;
+  currentTarget: EventTarget & { getBoundingClientRect(): DOMRect };
 }

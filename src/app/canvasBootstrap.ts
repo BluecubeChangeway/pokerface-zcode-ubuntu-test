@@ -71,6 +71,36 @@ export function resetCanvasBootstrapForTests(): void {
   bootstrapped = false;
 }
 
+/**
+ * 画布内卡片移动的拖放 payload 类型（U-UI-10 最小版重定位）：
+ * 纯 UI 状态（placement 坐标），非业务事实（D-010），与工作量卡的业务拖放严格区分。
+ */
+export const CANVAS_MOVE_DRAG_TYPE = "text/canvas-move-card-id";
+
+/**
+ * 由 drop 坐标计算新的 placement（U-UI-10 最小版）：
+ * - 以画布左上角为原点（drop 坐标减画布矩形偏移）；
+ * - 画布有尺寸时夹取到边界内（卡片宽 180 / 高预留 80，不精确到像素——纯 UI 状态无业务含义）；
+ * - 画布无尺寸信息（测试环境 happy-dom 的 getBoundingClientRect 全零）→ 不夹取，原样返回。
+ */
+export function computeDropPlacement(
+  clientX: number,
+  clientY: number,
+  canvasRect: { left: number; top: number; width: number; height: number },
+  cardWidth = 180
+): { x: number; y: number } {
+  const rawX = Math.max(0, clientX - canvasRect.left);
+  const rawY = Math.max(0, clientY - canvasRect.top);
+  if (canvasRect.width <= 0 || canvasRect.height <= 0) {
+    return { x: rawX, y: rawY };
+  }
+  const clamp = (value: number, max: number) => Math.min(Math.max(0, value), Math.max(0, max));
+  return {
+    x: clamp(rawX, canvasRect.width - cardWidth),
+    y: clamp(rawY, canvasRect.height - 80),
+  };
+}
+
 /** Deck：按 CardGroup（activeType）从真实 Card 数据筛选（不产生 Domain Fact）。D-154：revoked 卡业务世界中等同不存在，不出现在 Deck */
 export function deckCardsOf(cards: AnyCard[], activeType: CardType): AnyCard[] {
   return cards.filter((c) => c.type === activeType && !isBusinessRevoked(c));
