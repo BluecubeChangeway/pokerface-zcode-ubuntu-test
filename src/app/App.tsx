@@ -112,6 +112,66 @@ export function App() {
   // ---- 数据来源面板（R4a-2 本地文件夹存储接入；最小功能面板，非正式 UI）----
   const localDataService = dataService instanceof LocalFolderDataService ? dataService : undefined;
   const [seedBusy, setSeedBusy] = useState(false);
+  // R4b 备份/恢复（用户批准设计：全量替换 + 恢复前自动快照）
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | undefined>(undefined);
+  const [backupListVisible, setBackupListVisible] = useState(false);
+  const [backupEntries, setBackupEntries] = useState<
+    Array<{ name: string; createdAt: string | null; marker: string | null }>
+  >([]);
+  const [restoreCandidate, setRestoreCandidate] = useState<string | undefined>(undefined);
+
+  const refreshBackupList = async () => {
+    if (!localDataService) return;
+    const entries = await localDataService.listBackups();
+    setBackupEntries(entries);
+  };
+  const handleCreateBackup = async () => {
+    if (!localDataService || backupBusy) return;
+    setBackupBusy(true);
+    setBackupMessage(undefined);
+    setActionError(undefined);
+    try {
+      const backup = await localDataService.createBackup();
+      setBackupMessage(`备份完成：${backup.name}`);
+      await refreshBackupList();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+  const handleToggleBackupList = async () => {
+    if (!localDataService || backupBusy) return;
+    const next = !backupListVisible;
+    setBackupListVisible(next);
+    setRestoreCandidate(undefined);
+    if (next) {
+      await refreshBackupList();
+    }
+  };
+  const handleConfirmRestore = async (name: string) => {
+    if (!localDataService || backupBusy) return;
+    setBackupBusy(true);
+    setActionError(undefined);
+    try {
+      // 恢复 = 全量替换（用户批准）；服务端自动先做"恢复前快照"
+      const result = await localDataService.restoreBackup(name);
+      setRestoreCandidate(undefined);
+      setBackupMessage(
+        `已恢复自 ${result.restoredFrom}；恢复前快照：${result.preRestoreSnapshot}（可随时再恢复回来）`
+      );
+      // 恢复替换了全部数据集合：刷新界面数据 + 推荐面板与落盘推荐同步
+      reload();
+      const recommendations = await dataService.getRecommendations(undefined);
+      recommendationStore.getState().setRecommendations(recommendations);
+      await refreshBackupList();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
   const handleSeedDemo = async () => {
     if (!localDataService || seedBusy) return;
     setSeedBusy(true);
@@ -997,6 +1057,73 @@ export function App() {
               <button data-testid="clear-demo-button" disabled={seedBusy} onClick={() => void handleClearDemo()}>
                 清除演示数据（你自建的数据不受影响）
               </button>
+            )}
+            {/* R4b 备份/恢复（用户批准设计）：手动全量快照 + 全量替换恢复（含自动预快照） */}
+            <button
+              data-testid="create-backup-button"
+              disabled={backupBusy}
+              onClick={() => void handleCreateBackup()}
+            >
+              立即备份
+            </button>
+            <button
+              data-testid="toggle-backup-list-button"
+              disabled={backupBusy}
+              onClick={() => void handleToggleBackupList()}
+            >
+              {backupListVisible ? "收起备份列表" : "从备份恢复…"}
+            </button>
+            {backupListVisible && (
+              <div data-testid="backup-list" style={{ display: "grid", gap: 6, maxHeight: 200, overflow: "auto", fontSize: 11 }}>
+                {backupEntries.length === 0 ? (
+                  <div data-testid="backup-list-empty">（暂无备份）</div>
+                ) : (
+                  backupEntries.map((entry) => (
+                    <div
+                      key={entry.name}
+                      data-testid={`backup-entry-${entry.name}`}
+                      style={{ display: "flex", gap: 6, alignItems: "center" }}
+                    >
+                      <span style={{ flex: 1 }}>
+                        {entry.name}
+                        {entry.marker === "pre-restore" ? "（恢复前快照）" : ""}
+                      </span>
+                      {restoreCandidate === entry.name ? (
+                        <>
+                          <button
+                            data-testid={`confirm-restore-${entry.name}`}
+                            disabled={backupBusy}
+                            onClick={() => void handleConfirmRestore(entry.name)}
+                          >
+                            确认恢复
+                          </button>
+                          <button
+                            disabled={backupBusy}
+                            onClick={() => setRestoreCandidate(undefined)}
+                          >
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          disabled={backupBusy || restoreCandidate !== undefined}
+                          onClick={() => {
+                            setRestoreCandidate(entry.name);
+                            setBackupMessage(undefined);
+                          }}
+                        >
+                          恢复
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            {backupMessage !== undefined && (
+              <div data-testid="backup-message" style={{ fontSize: 11, color: "#262" }}>
+                {backupMessage}
+              </div>
             )}
           </div>
         )}

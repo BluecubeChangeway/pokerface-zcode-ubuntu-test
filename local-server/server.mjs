@@ -153,6 +153,107 @@ function sendJson(res, status, payload) {
 }
 
 /**
+ * R4b 闲时备份（用户批准设计，见 AGENT/R4B-BACKUP-DESIGN.md）：
+ * backups/<时间戳>/ 全量快照（14 集合文件 + manifest）；恢复 = 全量替换，
+ * 执行前自动先做"恢复前快照"（恢复永不丢数据）；损坏即中止、不动现有数据。
+ */
+const BACKUP_DIR_NAME = "backups";
+
+function backupRoot(dataDir) {
+  return path.join(dataDir, BACKUP_DIR_NAME);
+}
+
+function timestampForName() {
+  const now = new Date();
+  const pad = (n, width = 2) => String(n).padStart(width, "0");
+  return (
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+    `T${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}-${pad(now.getMilliseconds(), 3)}`
+  );
+}
+
+/** 创建全量快照：先写临时目录再改名（原子），从内存态写出与磁盘一致的内容 */
+function createBackup(dataDir, store, marker = "manual") {
+  const name = timestampForName();
+  const tmpDir = path.join(backupRoot(dataDir), `.tmp-${name}`);
+  const finalDir = path.join(backupRoot(dataDir), name);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const manifest = { name, createdAt: new Date().toISOString(), marker, collections: {} };
+  for (const collectionName of COLLECTIONS) {
+    const rows = store.get(collectionName) ?? [];
+    fs.writeFileSync(
+      path.join(tmpDir, `${collectionName}.json`),
+      JSON.stringify(rows, null, 2),
+      "utf8"
+    );
+    manifest.collections[collectionName] = rows.length;
+  }
+  fs.writeFileSync(path.join(tmpDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+  fs.renameSync(tmpDir, finalDir);
+  return manifest;
+}
+
+function listBackups(dataDir) {
+  const root = backupRoot(dataDir);
+  if (!fs.existsSync(root)) return [];
+  return fs
+    .readdirSync(root)
+    .filter((entry) => !entry.startsWith(".") && fs.statSync(path.join(root, entry)).isDirectory())
+    .sort()
+    .reverse()
+    .map((name) => {
+      let manifest = null;
+      try {
+        manifest = JSON.parse(fs.readFileSync(path.join(root, name, "manifest.json"), "utf8"));
+      } catch {
+        // 无/坏 manifest 的目录仍列出（防御），字段置空
+      }
+      return {
+        name,
+        createdAt: manifest?.createdAt ?? null,
+        marker: manifest?.marker ?? null,
+        collections: manifest?.collections ?? null,
+      };
+    });
+}
+
+/** 恢复：先校验备份全部集合文件存在且可解析（任一损坏即中止、零改动），再自动预快照，最后全量替换内存与磁盘 */
+function restoreBackup(dataDir, store, name) {
+  if (typeof name !== "string" || !/^[0-9T:-]+$/.test(name)) {
+    throw new Error(`非法备份名：${name}`);
+  }
+  const backupPath = path.join(backupRoot(dataDir), name);
+  if (!fs.existsSync(backupPath)) {
+    throw new Error(`备份不存在：${name}`);
+  }
+  const restored = {};
+  for (const collectionName of COLLECTIONS) {
+    const file = path.join(backupPath, `${collectionName}.json`);
+    if (!fs.existsSync(file)) {
+      throw new Error(`备份不完整（缺 ${collectionName}.json），已中止恢复，现有数据未动`);
+    }
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (!Array.isArray(parsed)) {
+        throw new Error("not an array");
+      }
+      restored[collectionName] = parsed;
+    } catch (error) {
+      throw new Error(
+        `备份文件损坏（${collectionName}.json：${error.message}），已中止恢复，现有数据未动`
+      );
+    }
+  }
+  const preRestore = createBackup(dataDir, store, "pre-restore");
+  for (const collectionName of COLLECTIONS) {
+    const rows = restored[collectionName];
+    store.set(collectionName, rows);
+    persistCollection(dataDir, collectionName, rows);
+  }
+  return { restoredFrom: name, preRestoreSnapshot: preRestore.name };
+}
+
+/**
  * 创建本地数据服务。port 传 0 = 由系统分配临时端口（测试用）。
  * 返回 { server, port, close }——close 完成后端口释放。
  * async 函数：目录装载/损坏保护等同步异常统一以 Promise rejection 呈现。
@@ -174,6 +275,19 @@ export async function createLocalServer({ port = DEFAULT_PORT, dataDir }) {
       }
       if (req.method === "GET" && url.pathname === "/api/health") {
         return sendJson(res, 200, { ok: true, dataDir: dir });
+      }
+      // R4b 备份/恢复（在集合通用路由之前——"backups" 是目录不是集合名）
+      if (req.method === "POST" && url.pathname === "/api/backup") {
+        const manifest = createBackup(dir, store, "manual");
+        return sendJson(res, 200, { ok: true, backup: manifest });
+      }
+      if (req.method === "GET" && url.pathname === "/api/backups") {
+        return sendJson(res, 200, listBackups(dir));
+      }
+      if (req.method === "POST" && url.pathname === "/api/restore") {
+        const body = await readJsonBody(req);
+        const result = restoreBackup(dir, store, body?.name);
+        return sendJson(res, 200, { ok: true, ...result });
       }
       const match = url.pathname.match(/^\/api\/([a-z-]+)$/);
       if (!match || !store.has(match[1])) {

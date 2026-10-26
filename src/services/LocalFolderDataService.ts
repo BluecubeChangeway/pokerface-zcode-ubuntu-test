@@ -238,4 +238,49 @@ export class LocalFolderDataService implements DataService {
   async deleteDemoCalculationResults(ids: string[]): Promise<void> {
     await this.deleteCollectionRows("calculation-results", ids);
   }
+
+  // ---- R4b 备份/恢复（存储层能力，非 DataService 接口成员——不进业务接口）----
+  // 用户批准设计（AGENT/R4B-BACKUP-DESIGN.md）：时间戳全量快照 + 手动触发；
+  // 恢复 = 全量替换，执行前自动"恢复前快照"（恢复永不丢数据）。
+
+  /** 备份条目信息（来自备份内 manifest；防御：坏 manifest 的目录字段为空） */
+  async listBackups(): Promise<
+    Array<{
+      name: string;
+      createdAt: string | null;
+      marker: string | null;
+      collections: Record<string, number> | null;
+    }>
+  > {
+    return this.requestJson<
+      Array<{
+        name: string;
+        createdAt: string | null;
+        marker: string | null;
+        collections: Record<string, number> | null;
+      }>
+    >("/api/backups");
+  }
+
+  /** 立即创建全量快照，返回备份名（时间戳） */
+  async createBackup(): Promise<{ name: string; createdAt: string; marker: string }> {
+    const body = await this.requestJson<{
+      ok: boolean;
+      backup: { name: string; createdAt: string; marker: string };
+    }>("/api/backup", { method: "POST", body: JSON.stringify({}) });
+    return body.backup;
+  }
+
+  /** 恢复指定备份（全量替换；服务端自动先做"恢复前快照"） */
+  async restoreBackup(name: string): Promise<{
+    restoredFrom: string;
+    preRestoreSnapshot: string;
+  }> {
+    const body = await this.requestJson<{
+      ok: boolean;
+      restoredFrom: string;
+      preRestoreSnapshot: string;
+    }>("/api/restore", { method: "POST", body: JSON.stringify({ name }) });
+    return { restoredFrom: body.restoredFrom, preRestoreSnapshot: body.preRestoreSnapshot };
+  }
 }
