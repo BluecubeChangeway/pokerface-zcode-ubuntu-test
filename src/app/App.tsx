@@ -213,7 +213,16 @@ export function App() {
 
   const activeType = deckStore.getState().activeType;
   const placements = canvasStore.getState().cards;
-  const deckCards = deckCardsOf(cards, activeType);
+  // A-008 Deck 消失/还原（用户 2026-10-26 裁定）：有 active 关联的卡不显示在 Deck，
+  // 解除后自动还原——纯 Relations 投影（D-001/D-010）。showAllDeckCards 状态供全院
+  // 组织架构场景切换（大量卡处于关联中时不至于"Deck 全空"）。
+  const [showAllDeckCards, setShowAllDeckCards] = useState(false);
+  const deckCards = deckCardsOf(cards, activeType, {
+    relations,
+    includeAssigned: showAllDeckCards ? true : false,
+  });
+  const allDeckCardsCount = deckCardsOf(cards, activeType).length;
+  const hiddenDeckCount = allDeckCardsCount - deckCards.length;
 
   // Recommendation UI 数据唯一来自 recommendationStore（纯 selector 转展示视图模型）
   const recommendationItems: RecommendationListItem[] = toRecommendationListItems(
@@ -552,6 +561,29 @@ export function App() {
           ))}
         </div>
         <div style={{ display: "grid", gap: 8 }}>
+          {/* A-008：Deck 为空且有关联卡被隐藏 → 提示 + 切换按钮（全院场景查看全部卡） */}
+          {deckCards.length === 0 && hiddenDeckCount > 0 && (
+            <div style={{ fontSize: 11, color: "#888", display: "grid", gap: 6 }}>
+              <div data-testid="deck-empty-with-assigned">
+                全部 {activeType} 卡已在卡槽中（{hiddenDeckCount} 张已关联）
+              </div>
+              <button
+                data-testid="deck-show-all-toggle"
+                onClick={() => setShowAllDeckCards((value) => !value)}
+              >
+                显示全部（含已关联）
+              </button>
+            </div>
+          )}
+          {deckCards.length > 0 && hiddenDeckCount > 0 && (
+            <button
+              data-testid="deck-show-all-toggle"
+              style={{ fontSize: 11, padding: "4px 8px" }}
+              onClick={() => setShowAllDeckCards((value) => !value)}
+            >
+              {showAllDeckCards ? "只显示未关联" : `显示全部（含已关联 ${hiddenDeckCount}）`}
+            </button>
+          )}
           {deckCards.map((card) => {
             const workloadCard = asWorkloadCard(card);
             const isBudget = activeType === "budget" && card.type === "budget";

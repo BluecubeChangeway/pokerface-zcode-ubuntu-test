@@ -1,6 +1,7 @@
 import { canvasStore } from "../stores/canvasStore";
 import type { CanvasCardPlacement } from "../domain/canvas/types";
 import type { AnyCard, CardSlot, CardType, UnitCard, WorkloadCard } from "../domain/card/types";
+import type { Relation } from "../domain/relation/types";
 import { isBusinessRevoked } from "../domain/workload/revocationService";
 
 /**
@@ -101,9 +102,39 @@ export function computeDropPlacement(
   };
 }
 
-/** Deck：按 CardGroup（activeType）从真实 Card 数据筛选（不产生 Domain Fact）。D-154：revoked 卡业务世界中等同不存在，不出现在 Deck */
-export function deckCardsOf(cards: AnyCard[], activeType: CardType): AnyCard[] {
-  return cards.filter((c) => c.type === activeType && !isBusinessRevoked(c));
+/**
+ * Deck：按 CardGroup（activeType）从真实 Card 数据筛选（不产生 Domain Fact）。
+ * D-154：revoked 卡业务世界中等同不存在，不出现在 Deck。
+ * A-008（用户 2026-10-26 裁定，"最早的需求说明里明确过"）：Deck = "当前上下文中可供
+ * 用户发现和选择的卡牌集合"（历史 L6165）——已有 active 关联（被拖入卡槽成为关联卡）
+ * 的卡不再出现在 Deck；解除关联（拖出）后自动还原。过滤从 Relations 投影，不新增
+ * 领域概念（D-001 Relations 唯一事实源 + D-010 UI 状态从事实推导）。
+ *
+ * includeAssigned = false 为默认（过滤开启）；全院组织架构场景（大量卡处于关联中）
+ * 可传 true 查看全部卡——过滤是 Deck 视图行为，不影响槽内显示/画布渲染。
+ */
+export function deckCardsOf(
+  cards: AnyCard[],
+  activeType: CardType,
+  options?: { relations?: Relation[]; includeAssigned?: boolean }
+): AnyCard[] {
+  const filtered = cards.filter((c) => c.type === activeType && !isBusinessRevoked(c));
+  if (options?.includeAssigned !== false || !options?.relations) {
+    return filtered;
+  }
+  // A-008：有 active workload_assign / budget_assign 关联的卡 → 不显示在 Deck（还原 = 关系解除后过滤自动反转）
+  const assignedCardIds = new Set<string>();
+  for (const relation of options.relations) {
+    if (
+      relation.active &&
+      (relation.type === "workload_assign" || relation.type === "budget_assign")
+    ) {
+      // workload_assign: Unit→Workload（targetId = 卡）；budget_assign: Budget→Unit（sourceId = 卡）
+      assignedCardIds.add(relation.targetId);
+      assignedCardIds.add(relation.sourceId);
+    }
+  }
+  return filtered.filter((c) => !assignedCardIds.has(c.id));
 }
 
 /** Canvas：placement 对应的真实 Card（从当前 Card 数据解析）。D-154：revoked 卡在 Canvas 上等同不存在 */
