@@ -171,3 +171,112 @@ async function resolveAfterRelation(
   const trigger = await resolveWorkloadToUnitAndRecommend(dataService, workloadCardId, unitCardId);
   return { outcome: "resolved", relationOutcome, relation, trigger };
 }
+
+/**
+ * Budget Drop → Relation 业务接线层（U-UI-13，2026-10-26）
+ *
+ * 用户语义方向（2026-10-26 原话要点）："budget 卡原则上应与 workload 卡在界面交互上
+ * 十分接近，也可以被拖拽到某个单元卡下成为某个单元的预算卡片。"
+ *
+ * 语义依据（已封板，非新裁定）：
+ * - budget_assign = 预算真正分配给 UnitCard（Q-05 / D-023：allocation 是真正分配）；
+ * - 方向 BudgetCard → UnitCard（端点规则 endpointRules：source=budget, target=unit——
+ *   注意与 workload_assign 相反）；
+ * - P2-1 同业务键幂等：active + type + sourceId + targetId（submitDropAssignRelation
+ *   通用按 relation 自身字段判重，无需特判）。
+ *
+ * 与 workload 路径的关键边界（如实记录）：
+ * - **无 Resolution 触发**：Resolution / Recommendation 是工作量域机制（D-128：
+ *   "Workload Resolution"），预算拖入不触发解析、不产生推荐——D-150 的 Resolution 部分
+ *   是工作量卡专属；预算拖入到"确认槽位合法 → 建立关系"为止；
+ * - 预算**不自动激活 Unit Slot**（D-019 既有边界）；
+ * - AGENTS §20 同语义：无效目标（非 budget 槽 / 目标卡不存在 / revoked 卡）静默取消。
+ */
+export async function handleBudgetCardDropOnUnitSlot(
+  dataService: DataService,
+  budgetCardId: string,
+  slot: CardSlot
+): Promise<
+  | { outcome: "resolved"; relationOutcome: DropRelationOutcome; relation: Relation }
+  | { outcome: "relation_failed"; error: string }
+  | { outcome: "ignored" }
+> {
+  // AGENTS §20：拖到无效目标 → 静默取消
+  if (slot.type !== "budget") {
+    return { outcome: "ignored" };
+  }
+  if (!canAcceptCard(slot, "budget")) {
+    return { outcome: "ignored" };
+  }
+  if (!slot.ownerCardId) {
+    return { outcome: "ignored" };
+  }
+  const unitCardId = slot.ownerCardId;
+
+  const [cards, relations] = await Promise.all([
+    dataService.getCards(),
+    dataService.getRelations(),
+  ]);
+
+  // 目标 Unit 卡必须真实存在且类型正确
+  if (!cards.some((c) => c.id === unitCardId && c.type === "unit")) {
+    return { outcome: "ignored" };
+  }
+
+  // D-154：revoked 预算卡业务世界中等同不存在——不给它建立关系
+  const budgetCard = cards.find((c) => c.id === budgetCardId && c.type === "budget");
+  if (!budgetCard || isBusinessRevoked(budgetCard)) {
+    return { outcome: "ignored" };
+  }
+
+  // P2-1 同业务键幂等：已有 active budget_assign（方向 Budget→Unit）→ 复用
+  const existingAssign = relations.find(
+    (r) =>
+      r.active &&
+      r.type === "budget_assign" &&
+      r.sourceId === budgetCardId &&
+      r.targetId === unitCardId
+  );
+  if (existingAssign) {
+    return { outcome: "resolved", relationOutcome: "reused", relation: existingAssign };
+  }
+
+  // 创建 budget_assign（方向 BudgetCard → UnitCard；端点校验经 createRelation）
+  const endpointKinds = new Map<string, RelationEndpointKind>();
+  for (const card of cards) {
+    endpointKinds.set(card.id, card.type);
+  }
+  let relation: Relation;
+  try {
+    relation = createRelation(
+      {
+        id: uuidv4(),
+        type: "budget_assign",
+        sourceId: budgetCardId,
+        targetId: unitCardId,
+        metadata: { origin: "drop" },
+      },
+      { existingRelations: relations, endpointKinds }
+    );
+  } catch (error) {
+    return {
+      outcome: "relation_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  // 持久化（D-141：经 ActionSubmissionService 唯一持久化边界；内部同键 active 兜底）
+  try {
+    const submission = await submitDropAssignRelation(relation, dataService);
+    return {
+      outcome: "resolved",
+      relationOutcome: submission.outcome,
+      relation: submission.relation,
+    };
+  } catch (error) {
+    return {
+      outcome: "relation_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}

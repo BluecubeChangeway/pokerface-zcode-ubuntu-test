@@ -7,9 +7,11 @@ import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import { deckStore } from "../stores/deckStore";
 import { mockSlots } from "../mock/mockCards";
-import type { AnyCard, CardSlot, CardType, WorkloadCard } from "../domain/card/types";
+import type { AnyCard, BudgetCard, CardSlot, CardType, WorkloadCard } from "../domain/card/types";
 import type { Relation } from "../domain/relation/types";
 import {
+  onBudgetCardDragStart,
+  onBudgetCardSlotDragStart,
   onWorkloadCardDragStart,
   onWorkloadCardDropOutsideSlots,
   onWorkloadCardSlotDragStart,
@@ -416,8 +418,13 @@ export function App() {
           setActionError("error" in result && result.error ? result.error : "操作未成功");
           return;
         }
-        // 建立关系（D-150 resolved）或槽间移动（A-002 moved）成功 → 刷新槽内卡显示
-        if (result.outcome === "resolved" || result.outcome === "moved") {
+        // 建立关系（D-150 resolved / U-UI-13 budget_resolved）或槽间移动（moved / budget_moved）成功 → 刷新槽内卡显示
+        if (
+          result.outcome === "resolved" ||
+          result.outcome === "moved" ||
+          result.outcome === "budget_resolved" ||
+          result.outcome === "budget_moved"
+        ) {
           reload();
         }
         // ignored（无效 Drop）与 no_op_same_unit（放回原槽）：静默，零变化（AGENTS §20 / A-002b）
@@ -502,6 +509,24 @@ export function App() {
       .filter((entry): entry is { card: WorkloadCard } => entry !== undefined);
   };
 
+  // U-UI-13 预算槽内容：已分配预算卡（budget_assign 方向 Budget→Unit：targetId = 本单元）
+  const assignedBudgetCardsOf = (unitCardId: string) => {
+    const assignedCardIds = relations
+      .filter(
+        (relation) =>
+          relation.active &&
+          relation.type === "budget_assign" &&
+          relation.targetId === unitCardId
+      )
+      .map((relation) => relation.sourceId);
+    return assignedCardIds
+      .map((cardId) => {
+        const card = cardById(cards, cardId);
+        return card && card.type === "budget" ? { card: card as BudgetCard } : undefined;
+      })
+      .filter((entry): entry is { card: BudgetCard } => entry !== undefined);
+  };
+
   return (
     <main style={{ fontFamily: "sans-serif", padding: 24, display: "flex", gap: 48 }}>
       {/* Deck：真实 Card 数据（activeType 切换 CardGroup）。
@@ -529,7 +554,8 @@ export function App() {
         <div style={{ display: "grid", gap: 8 }}>
           {deckCards.map((card) => {
             const workloadCard = asWorkloadCard(card);
-            const isDraggable = activeType === "workload" && workloadCard !== undefined;
+            const isBudget = activeType === "budget" && card.type === "budget";
+            const isDraggable = isBudget || (activeType === "workload" && workloadCard !== undefined);
             return (
               <div
                 key={card.id}
@@ -542,7 +568,13 @@ export function App() {
                           event.dataTransfer as unknown as DataTransferLike,
                           workloadCard.id
                         )
-                    : undefined
+                    : isDraggable && isBudget
+                      ? (event) =>
+                          onBudgetCardDragStart(
+                            event.dataTransfer as unknown as DataTransferLike,
+                            card.id
+                          )
+                      : undefined
                 }
                 style={{
                   padding: 10,
@@ -638,6 +670,33 @@ export function App() {
                               padding: "2px 6px",
                               fontSize: 11,
                               background: "#cfe3cf",
+                              borderRadius: 4,
+                              cursor: "grab",
+                            }}
+                          >
+                            {card.name}
+                          </div>
+                        ))}
+                      {/* U-UI-13 预算槽内容：已分配预算卡（budget_assign 方向 Budget→Unit 投影）。
+                          预算芯片同款手势：落其他单元预算槽 = 移动、落槽外 = 解除、落回原槽 = no-op */}
+                      {slot.type === "budget" &&
+                        assignedBudgetCardsOf(unitCard.id).map(({ card }) => (
+                          <div
+                            key={card.id}
+                            data-testid={`budget-chip-${unitCard.id}-${card.id}`}
+                            draggable
+                            onDragStart={(event) =>
+                              onBudgetCardSlotDragStart(
+                                event.dataTransfer as unknown as DataTransferLike,
+                                card.id,
+                                unitCard.id
+                              )
+                            }
+                            style={{
+                              marginTop: 4,
+                              padding: "2px 6px",
+                              fontSize: 11,
+                              background: "#e8d5e8",
                               borderRadius: 4,
                               cursor: "grab",
                             }}

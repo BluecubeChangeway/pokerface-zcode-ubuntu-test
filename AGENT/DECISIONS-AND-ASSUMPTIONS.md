@@ -82,6 +82,21 @@
 
 ---
 
+### A-006｜预算卡拖放交互（U-UI-13） `[用户语义方向 + 封板语义接线]` 2026-10-26
+
+**用户表述（原话要点）**："budget 的卡片原则上应该与 workload 卡在界面交互上十分接近，也可以被拖拽到某个单元卡下成为某个单元的预算卡片。"
+
+**语义落点（全部为既有封板语义的接线，无新裁定）**：
+1. Budget 卡拖入 budget 槽 = 建立 budget_assign（Q-05 / D-023：allocation 是真正分配）——方向 Budget→Unit（endpointRules）；
+2. **无 Resolution/无推荐**：Resolution 是工作量域机制（D-128），预算拖入到"确认槽位合法→建立关系"为止——D-150 的 Resolution 部分是工作量专属（与 workload 路径的关键边界）；
+3. A-002/A-002b 同款手势预算镜像：预算芯片（槽内已分配预算卡）拖出槽外=解除（软删留痕）、槽间=移动、拖回原槽=no-op——**无配对反馈失效、无自动重推**（预算域当前无推荐机制）；
+4. 交叉目标静默（budget 卡落 workload 槽 / workload 卡落 budget 槽 → AGENTS §20 静默取消）；
+5. P2-1 同业务键幂等不变。
+
+**实施记录（2026-10-26）**：dropTrigger 补 handleBudgetCardDropOnUnitSlot；budgetRelationEntry.ts（moveBudgetCardAssignment + unassignBudgetCard，无解析/反馈联动）；dropInteraction 双载体统一路由（旧名别名兼容）；App（Deck budget 卡可拖、budget 槽芯片、结果分支刷新）。4 项行为测试 + 浏览器实测（拖入/芯片/拖出解除/重新拖入）全通过；磁盘留痕验证（软删行 active=false 保留）。
+
+---
+
 ### A-003｜拆分的本质语义与"相同拆分过程"判定依据（D-157 前置，Open Question 3 方向） `[用户裁定 → 已批复 → 已实施]` 2026-10-21 裁定，2026-10-22 批复 Q1～Q3 并完成 R3 实施
 
 **用户批复（2026-10-22，"接受你的提议"）**：Q1 渠道初式 = 取用科室（经 dimensions 表达）；Q2 复用忽略新名直接用旧卡；Q3 复用在确认面板可见展示（不静默）。设计报告（AGENT/R3-SPLIT-PROVENANCE-DESIGN.md）整体批准。
