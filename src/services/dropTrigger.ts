@@ -239,6 +239,9 @@ export async function handleBudgetCardDropOnUnitSlot(
       r.targetId === unitCardId
   );
   if (existingAssign) {
+    // A-007 缺陷修复（2026-10-27 用户发现）：reused 路径也要触发预算分析——
+    // 重复拖入（幂等复用）时推荐应同步刷新（同 D-142 re-offer 精神），不应静默跳过
+    await analyzeBudgetAndRecommend(dataService, budgetCardId, unitCardId);
     return { outcome: "resolved", relationOutcome: "reused", relation: existingAssign };
   }
 
