@@ -280,3 +280,113 @@ export async function handleBudgetCardDropOnUnitSlot(
     };
   }
 }
+
+/**
+ * Unit Drop → Structure 业务接线层（A-009 第一半，用户 2026-10-26 裁定）
+ *
+ * 语义依据（Q-04 封板，无新裁定）：
+ * - structure 关系 = 单元组织结构从属（D-015：V1 Unit Slot 只接受 UnitCard）；
+ * - 方向 Unit→Unit（endpointRules：source=unit, target=unit）；
+ * - P2-1 同业务键幂等（submitDropAssignRelation 通用按 type+source+target 判重）。
+ *
+ * 边界（如实记录）：
+ * - **无 Resolution 触发**：与预算同理——Resolution 是工作量域机制（D-128）；
+ *   单元拖入到"确认槽位合法 → 建立从属关系"为止；
+ * - 单元**不做自环**（unit 不能挂到自己下面）——静默取消；
+ * - AGENTS §20：无效目标（非 unit 槽 / 目标卡不存在 / revoked 卡 / 自环）静默取消。
+ */
+export async function handleUnitCardDropOnUnitSlot(
+  dataService: DataService,
+  unitCardId: string,
+  slot: CardSlot
+): Promise<
+  | { outcome: "structure_resolved"; relationOutcome: DropRelationOutcome; relation: Relation }
+  | { outcome: "relation_failed"; error: string }
+  | { outcome: "ignored" }
+> {
+  if (slot.type !== "unit") {
+    return { outcome: "ignored" };
+  }
+  if (!canAcceptCard(slot, "unit")) {
+    return { outcome: "ignored" };
+  }
+  if (!slot.ownerCardId) {
+    return { outcome: "ignored" };
+  }
+  const targetUnitCardId = slot.ownerCardId;
+
+  const [cards, relations] = await Promise.all([
+    dataService.getCards(),
+    dataService.getRelations(),
+  ]);
+
+  // 目标单元卡必须真实存在且类型正确
+  if (!cards.some((c) => c.id === targetUnitCardId && c.type === "unit")) {
+    return { outcome: "ignored" };
+  }
+
+  // D-154：revoked 单元卡业务世界中等同不存在
+  const sourceUnitCard = cards.find((c) => c.id === unitCardId && c.type === "unit");
+  if (!sourceUnitCard || isBusinessRevoked(sourceUnitCard)) {
+    return { outcome: "ignored" };
+  }
+
+  // 自环禁止：单元不能挂到自己下面
+  if (unitCardId === targetUnitCardId) {
+    return { outcome: "ignored" };
+  }
+
+  // P2-1 同业务键幂等：已有 active structure（方向 Unit→Unit）→ 复用
+  const existingStructure = relations.find(
+    (r) =>
+      r.active &&
+      r.type === "structure" &&
+      r.sourceId === unitCardId &&
+      r.targetId === targetUnitCardId
+  );
+  if (existingStructure) {
+    return {
+      outcome: "structure_resolved",
+      relationOutcome: "reused",
+      relation: existingStructure,
+    };
+  }
+
+  // 创建 structure（方向 UnitCard → UnitCard；端点校验经 createRelation）
+  const endpointKinds = new Map<string, RelationEndpointKind>();
+  for (const card of cards) {
+    endpointKinds.set(card.id, card.type);
+  }
+  let relation: Relation;
+  try {
+    relation = createRelation(
+      {
+        id: uuidv4(),
+        type: "structure",
+        sourceId: unitCardId,
+        targetId: targetUnitCardId,
+        metadata: { origin: "drop" },
+      },
+      { existingRelations: relations, endpointKinds }
+    );
+  } catch (error) {
+    return {
+      outcome: "relation_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  try {
+    const submission = await submitDropAssignRelation(relation, dataService);
+    return {
+      outcome: "structure_resolved",
+      relationOutcome: submission.outcome,
+      relation: submission.relation,
+    };
+  } catch (error) {
+    return {
+      outcome: "relation_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}

@@ -7,11 +7,13 @@ import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import { deckStore } from "../stores/deckStore";
 import { mockSlots } from "../mock/mockCards";
-import type { AnyCard, BudgetCard, CardSlot, CardType, WorkloadCard } from "../domain/card/types";
+import type { AnyCard, BudgetCard, CardSlot, CardType, UnitCard, WorkloadCard } from "../domain/card/types";
 import type { Relation } from "../domain/relation/types";
 import {
   onBudgetCardDragStart,
   onBudgetCardSlotDragStart,
+  onUnitCardDragStart,
+  onUnitCardSlotDragStart,
   onWorkloadCardDragStart,
   onWorkloadCardDropOutsideSlots,
   onWorkloadCardSlotDragStart,
@@ -216,13 +218,17 @@ export function App() {
   // A-008 Deck 消失/还原（用户 2026-10-26 裁定）：有 active 关联的卡不显示在 Deck，
   // 解除后自动还原——纯 Relations 投影（D-001/D-010）。showAllDeckCards 状态供全院
   // 组织架构场景切换（大量卡处于关联中时不至于"Deck 全空"）。
+  // 缺陷修复（2026-10-27 用户发现）：hiddenDeckCount 必须按**过滤视图**计算且恒定，
+  // 不随开关状态变化——原实现按当前显示数差值计算，开关打开后差值归零导致按钮消失、
+  // 无法返回过滤态。用户确认该功能未来保留，按"待用/已用"语义修复为持久双向开关。
   const [showAllDeckCards, setShowAllDeckCards] = useState(false);
-  const deckCards = deckCardsOf(cards, activeType, {
+  const filteredDeckCards = deckCardsOf(cards, activeType, {
     relations,
-    includeAssigned: showAllDeckCards ? true : false,
+    includeAssigned: false,
   });
-  const allDeckCardsCount = deckCardsOf(cards, activeType).length;
-  const hiddenDeckCount = allDeckCardsCount - deckCards.length;
+  const allDeckCards = deckCardsOf(cards, activeType);
+  const hiddenDeckCount = allDeckCards.length - filteredDeckCards.length;
+  const deckCards = showAllDeckCards ? allDeckCards : filteredDeckCards;
 
   // Recommendation UI 数据唯一来自 recommendationStore（纯 selector 转展示视图模型）
   const recommendationItems: RecommendationListItem[] = toRecommendationListItems(
@@ -432,7 +438,9 @@ export function App() {
           result.outcome === "resolved" ||
           result.outcome === "moved" ||
           result.outcome === "budget_resolved" ||
-          result.outcome === "budget_moved"
+          result.outcome === "budget_moved" ||
+          result.outcome === "structure_resolved" ||
+          result.outcome === "unit_moved"
         ) {
           reload();
         }
@@ -518,6 +526,25 @@ export function App() {
       .filter((entry): entry is { card: WorkloadCard } => entry !== undefined);
   };
 
+  // A-009 单元槽内容：已挂子单元（structure 方向 子Unit→父Unit：targetId = 本单元）
+  const assignedChildUnitsOf = (unitCardId: string) => {
+    const childUnitIds = relations
+      .filter(
+        (relation) =>
+          relation.active &&
+          relation.type === "structure" &&
+          relation.targetId === unitCardId
+      )
+      .map((relation) => relation.sourceId);
+    return childUnitIds
+      .map((cardId) => {
+        const card = cardById(cards, cardId);
+        const unit = asUnitCard(card);
+        return unit ? { card: unit } : undefined;
+      })
+      .filter((entry): entry is { card: UnitCard } => entry !== undefined);
+  };
+
   // U-UI-13 预算槽内容：已分配预算卡（budget_assign 方向 Budget→Unit：targetId = 本单元）
   const assignedBudgetCardsOf = (unitCardId: string) => {
     const assignedCardIds = relations
@@ -561,33 +588,31 @@ export function App() {
           ))}
         </div>
         <div style={{ display: "grid", gap: 8 }}>
-          {/* A-008：Deck 为空且有关联卡被隐藏 → 提示 + 切换按钮（全院场景查看全部卡） */}
-          {deckCards.length === 0 && hiddenDeckCount > 0 && (
-            <div style={{ fontSize: 11, color: "#888", display: "grid", gap: 6 }}>
-              <div data-testid="deck-empty-with-assigned">
-                全部 {activeType} 卡已在卡槽中（{hiddenDeckCount} 张已关联）
-              </div>
-              <button
-                data-testid="deck-show-all-toggle"
-                onClick={() => setShowAllDeckCards((value) => !value)}
-              >
-                显示全部（含已关联）
-              </button>
-            </div>
-          )}
-          {deckCards.length > 0 && hiddenDeckCount > 0 && (
+          {/* A-008（2026-10-27 修复）：持久双向开关——hiddenDeckCount 按过滤视图恒定计算，
+              开关打开后按钮仍显示"只显示待用"可随时返回过滤态（用户确认该功能未来保留）。
+              语义标签：待用 = 未建立关联、已用 = 已关联（挂入卡槽中） */}
+          {hiddenDeckCount > 0 && (
             <button
               data-testid="deck-show-all-toggle"
               style={{ fontSize: 11, padding: "4px 8px" }}
               onClick={() => setShowAllDeckCards((value) => !value)}
             >
-              {showAllDeckCards ? "只显示未关联" : `显示全部（含已关联 ${hiddenDeckCount}）`}
+              {showAllDeckCards
+                ? "只显示待用卡牌"
+                : `显示全部（含已用 ${hiddenDeckCount}）`}
             </button>
+          )}
+          {deckCards.length === 0 && hiddenDeckCount > 0 && (
+            <div data-testid="deck-empty-with-assigned" style={{ fontSize: 11, color: "#888" }}>
+              全部 {activeType} 卡已在卡槽中（{hiddenDeckCount} 张已用）
+            </div>
           )}
           {deckCards.map((card) => {
             const workloadCard = asWorkloadCard(card);
+            const unitCard = asUnitCard(card);
             const isBudget = activeType === "budget" && card.type === "budget";
-            const isDraggable = isBudget || (activeType === "workload" && workloadCard !== undefined);
+            const isUnit = activeType === "unit" && unitCard !== undefined;
+            const isDraggable = isBudget || isUnit || (activeType === "workload" && workloadCard !== undefined);
             return (
               <div
                 key={card.id}
@@ -606,7 +631,13 @@ export function App() {
                             event.dataTransfer as unknown as DataTransferLike,
                             card.id
                           )
-                      : undefined
+                      : isDraggable && isUnit && unitCard
+                        ? (event) =>
+                            onUnitCardDragStart(
+                              event.dataTransfer as unknown as DataTransferLike,
+                              unitCard.id
+                            )
+                        : undefined
                 }
                 style={{
                   padding: 10,
@@ -729,6 +760,32 @@ export function App() {
                               padding: "2px 6px",
                               fontSize: 11,
                               background: "#e8d5e8",
+                              borderRadius: 4,
+                              cursor: "grab",
+                            }}
+                          >
+                            {card.name}
+                          </div>
+                        ))}
+                      {/* A-009 单元槽内容：已挂子单元（structure 投影），同款拖出手势 */}
+                      {slot.type === "unit" &&
+                        assignedChildUnitsOf(unitCard.id).map(({ card }) => (
+                          <div
+                            key={card.id}
+                            data-testid={`unit-chip-${unitCard.id}-${card.id}`}
+                            draggable
+                            onDragStart={(event) =>
+                              onUnitCardSlotDragStart(
+                                event.dataTransfer as unknown as DataTransferLike,
+                                card.id,
+                                unitCard.id
+                              )
+                            }
+                            style={{
+                              marginTop: 4,
+                              padding: "2px 6px",
+                              fontSize: 11,
+                              background: "#d5d5e8",
                               borderRadius: 4,
                               cursor: "grab",
                             }}

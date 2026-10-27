@@ -2,6 +2,7 @@ import type { DataService } from "../services/DataService";
 import type { CardSlot } from "../domain/card/types";
 import {
   handleBudgetCardDropOnUnitSlot,
+  handleUnitCardDropOnUnitSlot,
   handleWorkloadCardDropOnUnitSlot,
   type DropTriggerResult,
 } from "../services/dropTrigger";
@@ -9,6 +10,10 @@ import {
   moveBudgetCardAssignment,
   unassignBudgetCard,
 } from "../services/budgetRelationEntry";
+import {
+  moveUnitStructureAssignment,
+  unassignUnitStructure,
+} from "../services/unitRelationEntry";
 import {
   moveWorkloadCardAssignment,
   unassignWorkloadCard,
@@ -44,6 +49,10 @@ export const WORKLOAD_CARD_ORIGIN_UNIT_DRAG_TYPE = "text/workload-card-origin-un
 export const BUDGET_CARD_DRAG_TYPE = "text/budget-card-id";
 /** 拖放 payload：预算卡来源标记（U-UI-13 预算镜像） */
 export const BUDGET_CARD_ORIGIN_UNIT_DRAG_TYPE = "text/budget-card-origin-unit-id";
+/** 拖放 payload：单元卡 ID（A-009 组织结构接线） */
+export const UNIT_CARD_DRAG_TYPE = "text/unit-card-id";
+/** 拖放 payload：单元卡来源标记（A-009 槽内芯片拖出） */
+export const UNIT_CARD_ORIGIN_UNIT_DRAG_TYPE = "text/unit-card-origin-unit-id";
 
 /** 浏览器 DataTransfer 的最小可测形状（node 测试环境无 DOM） */
 export interface DataTransferLike {
@@ -96,6 +105,24 @@ export function onBudgetCardSlotDragStart(
   dataTransfer.setData(BUDGET_CARD_ORIGIN_UNIT_DRAG_TYPE, originUnitId);
 }
 
+/** dragStart（Deck 来源，单元卡）：只携带 unitCardId（A-009 组织结构接线） */
+export function onUnitCardDragStart(
+  dataTransfer: DataTransferLike,
+  unitCardId: string
+): void {
+  dataTransfer.setData(UNIT_CARD_DRAG_TYPE, unitCardId);
+}
+
+/** dragStart（单元槽内芯片来源）：携带 unitCardId + 来源标记（A-009 镜像） */
+export function onUnitCardSlotDragStart(
+  dataTransfer: DataTransferLike,
+  unitCardId: string,
+  originUnitId: string
+): void {
+  dataTransfer.setData(UNIT_CARD_DRAG_TYPE, unitCardId);
+  dataTransfer.setData(UNIT_CARD_ORIGIN_UNIT_DRAG_TYPE, originUnitId);
+}
+
 /** 槽内 drop 的统一结果（D-150 建立关系 / A-002 移动 / 原槽 no-op / 静默） */
 export type SlotDropResult =
   | DropTriggerResult
@@ -110,6 +137,19 @@ export type SlotDropResult =
       outcome: "budget_resolved";
       relationOutcome: "persisted" | "reused";
       relationId: string;
+    }
+  | {
+      /** A-009 单元拖入单元槽（structure 建立或幂等复用；无 Resolution） */
+      outcome: "structure_resolved";
+      relationOutcome: "persisted" | "reused";
+      relationId: string;
+    }
+  | {
+      /** A-009 单元芯片槽间移动（structure 解除+新建，无解析/反馈联动） */
+      outcome: "unit_moved";
+      deactivatedRelationId?: string;
+      relationId: string;
+      relationOutcome: "persisted" | "reused";
     }
   | {
       /** A-002 / U-UI-13 预算移动：解除+新建（无解析/反馈联动） */
@@ -207,6 +247,50 @@ export async function onCardSlotDrop(
     }
   }
 
+  // ── Unit 载体（A-009 组织结构：unit 槽 → structure 建立从属，无 Resolution）──
+  const unitCardId = dataTransfer.getData(UNIT_CARD_DRAG_TYPE);
+  if (unitCardId) {
+    const originUnitId = dataTransfer.getData(UNIT_CARD_ORIGIN_UNIT_DRAG_TYPE);
+    if (!originUnitId || !slot.ownerCardId) {
+      // Deck 来源：unit 槽 → structure 建立从属；非 unit 槽（含 workload/budget 槽）→ 静默
+      const drop = await handleUnitCardDropOnUnitSlot(dataService, unitCardId, slot);
+      if (drop.outcome === "structure_resolved") {
+        return {
+          outcome: "structure_resolved",
+          relationOutcome: drop.relationOutcome,
+          relationId: drop.relation.id,
+        };
+      }
+      return drop;
+    }
+    if (originUnitId === slot.ownerCardId) {
+      return { outcome: "no_op_same_unit" };
+    }
+    // 单元芯片槽间移动：解除旧从属 + 建立新从属（无解析/反馈联动）
+    try {
+      const move = await moveUnitStructureAssignment(
+        dataService,
+        unitCardId,
+        originUnitId,
+        slot.ownerCardId
+      );
+      if (move.outcome === "moved") {
+        return {
+          outcome: "unit_moved",
+          deactivatedRelationId: move.deactivatedRelation?.id,
+          relationId: move.relation!.id,
+          relationOutcome: move.relationOutcome!,
+        };
+      }
+      return { outcome: "no_op_same_unit" };
+    } catch (error) {
+      return {
+        outcome: "move_failed",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   return { outcome: "ignored" };
 }
 
@@ -246,6 +330,16 @@ export async function onCardDropOutsideSlots(
       return { outcome: "ignored", invalidatedRecommendationIds: [] };
     }
     const result = await unassignBudgetCard(dataService, budgetCardId, originUnitId);
+    return { outcome: result.outcome, invalidatedRecommendationIds: [] };
+  }
+  // A-009 单元芯片拖出槽外 = 解除从属关系
+  const unitCardId = dataTransfer.getData(UNIT_CARD_DRAG_TYPE);
+  if (unitCardId) {
+    const originUnitId = dataTransfer.getData(UNIT_CARD_ORIGIN_UNIT_DRAG_TYPE);
+    if (!originUnitId) {
+      return { outcome: "ignored", invalidatedRecommendationIds: [] };
+    }
+    const result = await unassignUnitStructure(dataService, unitCardId, originUnitId);
     return { outcome: result.outcome, invalidatedRecommendationIds: [] };
   }
   return { outcome: "ignored", invalidatedRecommendationIds: [] };
