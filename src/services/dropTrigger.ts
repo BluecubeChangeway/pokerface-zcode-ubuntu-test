@@ -7,6 +7,7 @@ import { isBusinessRevoked } from "../domain/workload/revocationService";
 import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
 import type { ResolutionTriggerResult } from "./resolutionTrigger";
 import { submitDropAssignRelation } from "./ActionSubmissionService";
+import { analyzeBudgetAndRecommend } from "./budgetRecommendation";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -268,6 +269,9 @@ export async function handleBudgetCardDropOnUnitSlot(
   // 持久化（D-141：经 ActionSubmissionService 唯一持久化边界；内部同键 active 兜底）
   try {
     const submission = await submitDropAssignRelation(relation, dataService);
+    // A-007 预算推荐：budget_assign 建立后自动分析预算状态并注册信息型推荐
+    //（稳定 ID rec-budget-<budgetCardId>-<unitCardId>，同 D-142 精神幂等 upsert）
+    await analyzeBudgetAndRecommend(dataService, budgetCardId, unitCardId);
     return {
       outcome: "resolved",
       relationOutcome: submission.outcome,

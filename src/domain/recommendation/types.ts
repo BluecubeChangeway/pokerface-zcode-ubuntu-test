@@ -15,6 +15,7 @@ export type RecommendationKind =
   | "resolution"      // 工作量-单元匹配推荐
   | "relation"        // 关系建议
   | "card"            // 卡片推荐
+  | "budget_status"   // 预算状态推荐（A-007：Q-05 派生状态的展示接入，信息型无执行链）
   | "other";          // 其它
 
 export type RecommendationStatus =

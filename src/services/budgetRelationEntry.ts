@@ -4,6 +4,7 @@ import type { Relation } from "../domain/relation/types";
 import type { RelationEndpointKind } from "../domain/relation/endpointRules";
 import { isBusinessRevoked } from "../domain/workload/revocationService";
 import { submitMoveAssignRelation, submitUnassignRelation } from "./ActionSubmissionService";
+import { analyzeBudgetAndRecommend, invalidateBudgetFeedback } from "./budgetRecommendation";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -104,6 +105,9 @@ export async function moveBudgetCardAssignment(
   }
 
   const submission = await submitMoveAssignRelation(deactivatedRelation, newRelation, dataService);
+  // A-007 预算推荐联动（用户裁定）：旧配对反馈失效 + 新配对自动分析（信息型推荐，无执行链）
+  invalidateBudgetFeedback(budgetCardId, fromUnitId);
+  await analyzeBudgetAndRecommend(dataService, budgetCardId, toUnitId);
   return {
     outcome: "moved",
     deactivatedRelation: deactivatedRelation ?? undefined,
@@ -148,5 +152,7 @@ export async function unassignBudgetCard(
   }
   const deactivatedRelation: Relation = { ...activeAssign, active: false };
   await submitUnassignRelation(deactivatedRelation, dataService);
+  // A-007：旧配对反馈失效（解除后无关系 → 不再分析，无推荐重推）
+  invalidateBudgetFeedback(budgetCardId, fromUnitId);
   return { outcome: "unassigned", deactivatedRelation };
 }
