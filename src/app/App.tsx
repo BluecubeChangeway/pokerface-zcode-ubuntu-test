@@ -455,6 +455,43 @@ export function App() {
     // 原生 DnD 需要 dragOver preventDefault 才允许 drop；无业务语义
     event.preventDefault();
   };
+  // A-010 画布聚焦模式（用户 2026-10-26 裁定 + DEC-006 重锚定确认）：
+  // 双击（Deck 卡/画布卡/槽内卡/虚影关联卡）→ 设为聚焦卡。
+  // 聚焦渲染：画布只显示聚焦卡 + 一级关联卡（历史 L3500"聚焦模式=默认"裁定）；
+  // 未关联零散卡自动回 Deck（placement 隐藏——保留 placement 供下次聚焦还原位置，设计稿推荐项）。
+  // 一次聚焦一棵树（历史 L6120"虚影代表路径，实体代表当前工作对象"）。
+  const focusCardId = canvasStore.getState().focusCardId;
+  // 一级关联 = 与聚焦卡有 active 关系的另一端卡（D-001 Relations 唯一事实源）
+  const levelOneRelatedIds = new Set<string>();
+  if (focusCardId) {
+    levelOneRelatedIds.add(focusCardId);
+    for (const relation of relations) {
+      if (!relation.active) continue;
+      if (relation.sourceId === focusCardId) levelOneRelatedIds.add(relation.targetId);
+      if (relation.targetId === focusCardId) levelOneRelatedIds.add(relation.sourceId);
+    }
+  }
+  // 聚焦过滤：只显示聚焦卡及其一级关联的 placement；非聚焦时显示全部
+  const visiblePlacements = focusCardId
+    ? placements.filter((p) => levelOneRelatedIds.has(p.cardId))
+    : placements;
+  // 双击 → 聚焦（A-010 + DEC-006 重锚定：单击查看/双击聚焦）
+  const handleSetFocus = (cardId: string) => {
+    canvasStore.getState().setFocus(cardId);
+    // 聚焦变化 → 重载使关系投影更新（级联芯片/Deck 过滤即时反映）
+    reload();
+  };
+  const handleClearFocus = () => {
+    canvasStore.getState().clearFocus();
+    reload();
+  };
+  // 双击辅助：绑定到 DOM onDoubleClick
+  type ReactDoubleClickEvent = { preventDefault(): void };
+  const makeDoubleClickFocusHandler = (cardId: string) => (event: ReactDoubleClickEvent) => {
+    event.preventDefault();
+    handleSetFocus(cardId);
+  };
+
   // A-002b 槽外解除 + U-UI-10 画布重定位：画布根 drop 的统一入口——
   // 画布移动 payload（纯 UI 状态）优先；否则走槽内卡拖出的解除判定
   const handleCanvasRootDrop = (event: ReactDragEvent) => {
@@ -618,6 +655,7 @@ export function App() {
                 key={card.id}
                 data-testid={`deck-card-${card.id}`}
                 draggable={isDraggable}
+                onDoubleClick={() => handleSetFocus(card.id)}
                 onDragStart={
                   isDraggable && workloadCard
                     ? (event) =>
@@ -658,14 +696,28 @@ export function App() {
       {/* Canvas：canvasStore.cards（placement）→ 真实 UnitCard → 动态 Slot。
           A-002b：画布空白区域同时是"槽外解除"目标——从槽内拖出的卡在空白处松开 = 解除 */}
       <section aria-label="canvas" style={{ flex: 1 }}>
-        <h2>Canvas</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h2>Canvas</h2>
+          {focusCardId && (
+            <span data-testid="focus-indicator" style={{ fontSize: 12, color: "#246" }}>
+              聚焦：{cardById(cards, focusCardId)?.name ?? focusCardId}
+              <button
+                data-testid="clear-focus-button"
+                onClick={handleClearFocus}
+                style={{ marginLeft: 8, fontSize: 11, padding: "2px 8px" }}
+              >
+                取消聚焦
+              </button>
+            </span>
+          )}
+        </div>
         <div
           data-testid="canvas-root"
           style={{ position: "relative", width: 520, height: 400, border: "1px solid #999" }}
           onDragOver={makeSlotDragOverHandler()}
           onDrop={handleCanvasRootDrop}
         >
-          {placements.map((placement) => {
+          {visiblePlacements.map((placement) => {
             const card = cardById(cards, placement.cardId);
             const unitCard = asUnitCard(card);
             if (!unitCard) return null;
@@ -675,6 +727,7 @@ export function App() {
                 key={placement.cardId}
                 data-testid={`canvas-unit-${unitCard.id}`}
                 draggable
+                onDoubleClick={makeDoubleClickFocusHandler(unitCard.id)}
                 onDragStart={(event) => {
                   // U-UI-10 画布重定位（最小版）：整卡拖动 = 纯 placement 更新（D-010 UI 状态）。
                   // 守卫：槽内芯片发起的拖动（dragstart 冒泡到本卡）不得被当作画布移动——
