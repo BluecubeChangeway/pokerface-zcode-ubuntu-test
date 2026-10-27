@@ -565,14 +565,15 @@ export function App() {
 
   // A-009 单元槽内容：已挂子单元（structure 方向 子Unit→父Unit：targetId = 本单元）
   const assignedChildUnitsOf = (unitCardId: string) => {
+    // 方向（deriveUnitHierarchy 约定）：sourceId = 父（本单元），targetId = 子
     const childUnitIds = relations
       .filter(
         (relation) =>
           relation.active &&
           relation.type === "structure" &&
-          relation.targetId === unitCardId
+          relation.sourceId === unitCardId
       )
-      .map((relation) => relation.sourceId);
+      .map((relation) => relation.targetId);
     return childUnitIds
       .map((cardId) => {
         const card = cardById(cards, cardId);

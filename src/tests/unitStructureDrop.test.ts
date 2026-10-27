@@ -69,8 +69,9 @@ describe("A-009 单元卡组织结构接线", () => {
     if (result.outcome !== "structure_resolved") throw new Error("unreachable");
     expect(result.relationOutcome).toBe("persisted");
     const relations = await ds.getRelations();
+    // 方向：deriveUnitHierarchy 约定 sourceId = 父，targetId = 子
     const structure = relations.find(
-      (r) => r.active && r.type === "structure" && r.sourceId === child.id && r.targetId === parent.id
+      (r) => r.active && r.type === "structure" && r.sourceId === parent.id && r.targetId === child.id
     );
     expect(structure).toBeDefined();
     expect(structure!.metadata?.origin).toBe("drop");
@@ -95,7 +96,7 @@ describe("A-009 单元卡组织结构接线", () => {
     expect(reuse.relationOutcome).toBe("reused");
     // 共享模块存储含演示链 structure——只断言本配对的行唯一（不建第二条）
     const mine = (await ds.getRelations()).filter(
-      (r) => r.type === "structure" && r.sourceId === child.id && r.targetId === parent.id
+      (r) => r.type === "structure" && r.sourceId === parent.id && r.targetId === child.id
     );
     expect(mine.length).toBe(1);
 
@@ -131,7 +132,7 @@ describe("A-009 单元卡组织结构接线", () => {
     // 初始已挂 parentA
     await ds.saveRelations([{
       id: `rel-struct-${s}`, type: "structure",
-      sourceId: child.id, targetId: parentA.id, active: true,
+      sourceId: parentA.id, targetId: child.id, active: true,
     }]);
 
     // 拖回原槽 no-op
@@ -149,7 +150,7 @@ describe("A-009 单元卡组织结构接线", () => {
     expect(relations.find((r) => r.id === `rel-struct-${s}`)!.active).toBe(false); // 旧软删
     expect(
       relations.some(
-        (r) => r.active && r.type === "structure" && r.sourceId === child.id && r.targetId === parentB.id
+        (r) => r.active && r.type === "structure" && r.sourceId === parentB.id && r.targetId === child.id
       )
     ).toBe(true);
 
@@ -160,7 +161,7 @@ describe("A-009 单元卡组织结构接线", () => {
     expect(out.outcome).toBe("unassigned");
     const after = await ds.getRelations();
     expect(
-      after.filter((r) => r.type === "structure" && r.sourceId === child.id).every((r) => !r.active)
+      after.filter((r) => r.type === "structure" && r.targetId === child.id).every((r) => !r.active)
     ).toBe(true);
   });
 

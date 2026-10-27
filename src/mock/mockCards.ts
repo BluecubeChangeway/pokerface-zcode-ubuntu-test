@@ -12,6 +12,27 @@ export const mockSlots: CardSlot[] = [
     displayMode: "hand",
     expanded: false
   },
+  // A-009 演示链增补：一病区与主任的 unit 槽（显示预置 structure 子单元芯片）
+  {
+    id: "slot-unit-neurosurgery-ward-1-units",
+    ownerCardId: "unit-neurosurgery-ward-1",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-director-units",
+    ownerCardId: "unit-director",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
   {
     id: "slot-unit-neurosurgery-workloads",
     ownerCardId: "unit-neurosurgery",

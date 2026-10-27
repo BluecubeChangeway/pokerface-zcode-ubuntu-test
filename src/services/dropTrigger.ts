@@ -343,13 +343,14 @@ export async function handleUnitCardDropOnUnitSlot(
     return { outcome: "ignored" };
   }
 
-  // P2-1 同业务键幂等：已有 active structure（方向 Unit→Unit）→ 复用
+  // P2-1 同业务键幂等：已有 active structure → 复用
+  // 方向（deriveUnitHierarchy 既有约定）：sourceId = 父单元（slot owner），targetId = 子单元（被拖入的卡）
   const existingStructure = relations.find(
     (r) =>
       r.active &&
       r.type === "structure" &&
-      r.sourceId === unitCardId &&
-      r.targetId === targetUnitCardId
+      r.sourceId === targetUnitCardId &&
+      r.targetId === unitCardId
   );
   if (existingStructure) {
     return {
@@ -366,12 +367,15 @@ export async function handleUnitCardDropOnUnitSlot(
   }
   let relation: Relation;
   try {
+    // 方向修正（2026-10-27 用户发现芯片不显示预置关系后核查）：
+    // 代码库约定 = deriveUnitHierarchy 的 sourceId 是父、targetId 是子
+    // （mock 数据也是这个方向：神经外科→一病区 = 神经外科的子是一病区）
     relation = createRelation(
       {
         id: uuidv4(),
         type: "structure",
-        sourceId: unitCardId,
-        targetId: targetUnitCardId,
+        sourceId: targetUnitCardId,   // 父 = slot owner
+        targetId: unitCardId,         // 子 = 被拖入的卡
         metadata: { origin: "drop" },
       },
       { existingRelations: relations, endpointKinds }

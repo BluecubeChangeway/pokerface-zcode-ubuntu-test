@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from "uuid";
  * Q-04 封板 structure 语义接线，无新裁定）
  *
  * 语义边界（与工作量/预算版的关键差异）：
- * - structure 方向 = UnitCard → UnitCard（组织从属：source 是子，target 是父）；
+ * - structure 方向 = 父 UnitCard → 子 UnitCard（deriveUnitHierarchy 约定：source = 父，target = 子）；
  * - **无 Resolution / 无反馈联动**（同预算版边界——单元域当前无解析/推荐机制）；
  * - 解除 = 软删除留痕审计；移动 = 解除 + 新建；自环禁止；D-154 revoked 静默；
  * - P2-1 同业务键幂等不变。
@@ -57,13 +57,13 @@ export async function moveUnitStructureAssignment(
 
   const oldStructure = relations.find(
     (r) =>
-      r.active && r.type === "structure" && r.sourceId === unitCardId && r.targetId === fromUnitId
+      r.active && r.type === "structure" && r.sourceId === fromUnitId && r.targetId === unitCardId
   );
   const deactivatedRelation = oldStructure ? { ...oldStructure, active: false } : null;
 
   const existingNew = relations.find(
     (r) =>
-      r.active && r.type === "structure" && r.sourceId === unitCardId && r.targetId === toUnitId
+      r.active && r.type === "structure" && r.sourceId === toUnitId && r.targetId === unitCardId
   );
   let newRelation: Relation;
   if (existingNew) {
@@ -78,8 +78,8 @@ export async function moveUnitStructureAssignment(
         {
           id: uuidv4(),
           type: "structure",
-          sourceId: unitCardId,
-          targetId: toUnitId,
+          sourceId: toUnitId,   // 父
+          targetId: unitCardId, // 子
           metadata: { origin: "move" },
         },
         { existingRelations: relations, endpointKinds }
@@ -127,7 +127,7 @@ export async function unassignUnitStructure(
   }
   const activeStructure = relations.find(
     (r) =>
-      r.active && r.type === "structure" && r.sourceId === unitCardId && r.targetId === fromUnitId
+      r.active && r.type === "structure" && r.sourceId === fromUnitId && r.targetId === unitCardId
   );
   if (!activeStructure) {
     return { outcome: "no_op" };
