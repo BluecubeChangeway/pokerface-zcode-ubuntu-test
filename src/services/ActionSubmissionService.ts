@@ -297,6 +297,11 @@ export async function submitActionResult(
     await dataService.saveWorkloadSplits(result.createdWorkloadSplits);
   }
 
+  // W4 单元拆分：保存新创建的卡（D-141：executor 产内存事实，此处统一持久化）
+  if (result.createdCards && result.createdCards.length > 0) {
+    await dataService.saveCards(result.createdCards);
+  }
+
   // R3 拆分溯源落盘（查询投影：upsert by id = executionBatchId，重试幂等收敛；
   // 撤回不删除——历史记录，后续复用匹配按产物存活状态过滤，D-154）
   if (result.splitProvenance) {

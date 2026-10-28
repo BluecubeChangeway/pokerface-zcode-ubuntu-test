@@ -1,6 +1,6 @@
 import type { Relation } from "../domain/relation/types";
 import type { WorkloadResult, WorkloadSplit } from "../domain/workload/types";
-import type { WorkloadCard } from "../domain/card/types";
+import type { AnyCard, WorkloadCard } from "../domain/card/types";
 import type { Recommendation, UserDecision } from "../domain/recommendation/types";
 import { createRelation } from "../domain/relation/relationService";
 import { createWorkloadSplit, type SplitExecutionInput, type SplitExecutionResult } from "../domain/workload/splitService";
@@ -94,6 +94,11 @@ export interface ActionExecutorResult {
   splitProvenance?: SplitProvenanceRecord;
   /** R3 复用命中的子项结果 ID（Q3 可见性 / 测试观测；非业务事实） */
   reusedChildResultIds?: string[];
+  /**
+   * W4 单元拆分创建的新卡（D-141：executor 产内存事实，持久化由
+   * ActionSubmissionService 统一执行——saveCards）
+   */
+  createdCards?: AnyCard[];
   /** 错误信息（失败时） */
   error?: string;
 }
@@ -1050,6 +1055,53 @@ export function executeUserDecision(
       return executeFindExistingWorkload(decision.recommendationId, decision, context);
     case "confirm_split":
       return executeSplitWorkload(decision.recommendationId, decision, context);
+    case "confirm_unit_split": {
+      // W4：单元按对应表拆分——D-141 分离：executor 产内存事实，不直接持久化
+      const recommendation = context.recommendations.get(decision.recommendationId);
+      if (!recommendation) {
+        return { success: false, createdRelations: [], createdWorkloadResults: [], createdWorkloadSplits: [], error: `Recommendation not found: ${decision.recommendationId}` };
+      }
+      const payload = recommendation.payload as {
+        sourceUnitId: string;
+        targetUnitId: string;
+        newUnitName: string;
+        newUnitKind: string;
+      };
+      if (!payload?.targetUnitId || !payload?.newUnitName || !payload?.newUnitKind) {
+        return { success: false, createdRelations: [], createdWorkloadResults: [], createdWorkloadSplits: [], error: "confirm_unit_split 缺少必要参数" };
+      }
+      // 校验目标单元存在（D-154：revoked 等同不存在）
+      const targetUnit = context.existingCards.get(payload.targetUnitId);
+      if (!targetUnit || targetUnit.type !== "unit") {
+        return { success: false, createdRelations: [], createdWorkloadResults: [], createdWorkloadSplits: [], error: `目标单元 ${payload.targetUnitId} 不存在或已撤回` };
+      }
+      // 生成新单元卡 ID（确定性：从推荐 ID + 时间戳派生，重试幂等）
+      const newCardId = `unit-split-${decision.recommendationId}`;
+      const newCard: AnyCard = {
+        id: newCardId,
+        type: "unit",
+        name: payload.newUnitName,
+        unitKind: payload.newUnitKind as AnyCard extends { unitKind: infer K } ? K : never,
+        configurationState: "configured",
+        attributes: {},
+      };
+      // 生成 structure 关系（deriveUnitHierarchy 约定：sourceId=父, targetId=子）
+      const newRelation: Relation = {
+        id: `rel-unit-split-${decision.recommendationId}`,
+        type: "structure",
+        sourceId: payload.targetUnitId,   // 父
+        targetId: newCardId,              // 子
+        active: true,
+        metadata: { origin: "unit-split" },
+      };
+      return {
+        success: true,
+        createdRelations: [newRelation],
+        createdWorkloadResults: [],
+        createdWorkloadSplits: [],
+        createdCards: [newCard],
+      };
+    }
     case "confirm_aggregate":
       return executeAggregateDescendants(decision.recommendationId, decision, context);
     case "confirm_aggregate_children":

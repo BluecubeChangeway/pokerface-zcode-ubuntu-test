@@ -71,6 +71,7 @@ export type UserDecisionAction =
   | "confirm_aggregate"              // 确认聚合
   | "confirm_use_existing_parent"    // 确认使用已有父级 Workload
   | "confirm_aggregate_children"     // 确认聚合子 Workload
+  | "confirm_unit_split"            // 确认单元拆分（W4：按对应表创建新单元卡并挂入槽）
   | "create_new_workload"            // 创建新 Workload
   | "create_new_relation"            // 创建新关系
   | "cancel"                         // 取消

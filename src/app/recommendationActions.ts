@@ -30,6 +30,12 @@ import type { ActionExecutorContext } from "../services/actionExecutor";
 export function confirmActionFor(
   recommendation: Recommendation
 ): UserDecisionAction | undefined {
+  // W4：单元拆分推荐（kind="card"，payload.type="unit_split"）→ 确认按钮
+  if (recommendation.kind === "card") {
+    const cardPayload = recommendation.payload as { type?: string } | undefined;
+    if (cardPayload?.type === "unit_split") return "confirm_unit_split";
+    return undefined;
+  }
   if (recommendation.kind !== "resolution") return undefined;
   const payload = recommendation.payload as Partial<ResolutionRecommendation> | undefined;
   switch (payload?.type) {

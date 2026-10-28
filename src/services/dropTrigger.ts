@@ -8,6 +8,7 @@ import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
 import type { ResolutionTriggerResult } from "./resolutionTrigger";
 import { submitDropAssignRelation } from "./ActionSubmissionService";
 import { analyzeBudgetAndRecommend } from "./budgetRecommendation";
+import { checkAndRecommendUnitSplit } from "./unitSplitService";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -353,6 +354,8 @@ export async function handleUnitCardDropOnUnitSlot(
       r.targetId === unitCardId
   );
   if (existingStructure) {
+    // W4 reused 路径（与 A-007 同模式）：重复拖入时也要触发映射检查——推荐应同步刷新
+    checkAndRecommendUnitSplit(unitCardId, targetUnitCardId);
     return {
       outcome: "structure_resolved",
       relationOutcome: "reused",
@@ -389,6 +392,8 @@ export async function handleUnitCardDropOnUnitSlot(
 
   try {
     const submission = await submitDropAssignRelation(relation, dataService);
+    // W4：structure 建立后查询"科室对应表"——如可拆分则注册推荐（推荐-确认流）
+    checkAndRecommendUnitSplit(unitCardId, targetUnitCardId);
     return {
       outcome: "structure_resolved",
       relationOutcome: submission.outcome,
