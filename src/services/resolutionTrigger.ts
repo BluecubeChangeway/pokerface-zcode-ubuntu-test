@@ -102,6 +102,24 @@ export async function resolveWorkloadToUnitAndRecommend(
   // 4. 注册进 recommendationStore（status = recommended，等待用户确认）
   recommendationStore.getState().addRecommendation(recommendation);
 
+  // W3（2026-10-27）：精确匹配的补充拆分建议——注册第二条推荐（稳定 ID 带 -split 后缀）
+  if (resolutionResult.supplementalRecommendation) {
+    const supplemental: Recommendation = {
+      id: `${buildResolutionRecommendationId(workloadCardId, targetUnitId)}-split`,
+      kind: "resolution",
+      payload: {
+        ...resolutionResult.supplementalRecommendation,
+        matchingBasisSnapshot: toMatchingBasisSnapshot(resolutionResult),
+      },
+      reason: resolutionResult.supplementalRecommendation.reason,
+      status: "recommended",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      relatedEntityIds: [workloadCardId, targetUnitId],
+    };
+    recommendationStore.getState().addRecommendation(supplemental);
+  }
+
   // 5. 返回容器 + 完整分析结果
   return { recommendation, resolutionResult };
 }
