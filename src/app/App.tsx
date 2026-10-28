@@ -455,11 +455,12 @@ export function App() {
     // 原生 DnD 需要 dragOver preventDefault 才允许 drop；无业务语义
     event.preventDefault();
   };
-  // A-010 画布聚焦模式（用户 2026-10-26 裁定 + DEC-006 重锚定确认）：
-  // 双击（Deck 卡/画布卡/槽内卡/虚影关联卡）→ 设为聚焦卡。
-  // 聚焦渲染：画布只显示聚焦卡 + 一级关联卡（历史 L3500"聚焦模式=默认"裁定）；
-  // 未关联零散卡自动回 Deck（placement 隐藏——保留 placement 供下次聚焦还原位置，设计稿推荐项）。
-  // 一次聚焦一棵树（历史 L6120"虚影代表路径，实体代表当前工作对象"）。
+  // A-010 画布聚焦模式（用户 2026-10-26 裁定 + A-012 细化 2026-10-27）：
+  // 双击（Deck 卡/画布卡/槽内卡）→ 完全聚焦到该卡（新 Trail 基础）。
+  // 聚焦态内单击延伸卡 → 调整聚焦到该卡（Trail 基础不变，仍从原聚焦卡出发）。
+  // 聚焦渲染：画布只显示聚焦卡 + 一级关联卡（一棵树）；
+  // 一级关联卡无画布位置时自动布局（W1-1：画布显示原则 = 关联驱动，不预置无关联卡）。
+  // 移除取消聚焦按钮（A-012：双击其他卡即切换聚焦，无需取消）。
   const focusCardId = canvasStore.getState().focusCardId;
   // 一级关联 = 与聚焦卡有 active 关系的另一端卡（D-001 Relations 唯一事实源）
   const levelOneRelatedIds = new Set<string>();
@@ -471,19 +472,42 @@ export function App() {
       if (relation.targetId === focusCardId) levelOneRelatedIds.add(relation.sourceId);
     }
   }
+  // W1-1 聚焦自动布局：一级关联卡没有画布位置时自动分配（网格布局，纯 UI 状态 D-010）。
+  // 画布显示原则 = 关联驱动（A-012）——有关系的卡经聚焦出现在画布，无关系的留在 Deck。
+  useEffect(() => {
+    if (!focusCardId) return;
+    const missing = [...levelOneRelatedIds].filter(
+      (cardId) => !canvasStore.getState().cards.some((p) => p.cardId === cardId)
+    );
+    if (missing.length === 0) return;
+    // 网格布局：聚焦卡居中，关联卡环绕（最小版——固定坐标网格，无视觉设计）
+    const existing = canvasStore.getState().cards.length;
+    missing.forEach((cardId, index) => {
+      const col = (existing + index) % 3;
+      const row = Math.floor((existing + index) / 3);
+      canvasStore.getState().upsertCardPlacement({
+        cardId,
+        x: 24 + col * 300,
+        y: 224 + row * 200,
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- levelOneRelatedIds 从 relations 推导，reload 后自动更新
+  }, [focusCardId, relations]);
   // 聚焦过滤：只显示聚焦卡及其一级关联的 placement；非聚焦时显示全部
   const visiblePlacements = focusCardId
     ? placements.filter((p) => levelOneRelatedIds.has(p.cardId))
     : placements;
-  // 双击 → 聚焦（A-010 + DEC-006 重锚定：单击查看/双击聚焦）
+  // 双击 → 完全聚焦（新 Trail 基础）
   const handleSetFocus = (cardId: string) => {
     canvasStore.getState().setFocus(cardId);
-    // 聚焦变化 → 重载使关系投影更新（级联芯片/Deck 过滤即时反映）
     reload();
   };
-  const handleClearFocus = () => {
-    canvasStore.getState().clearFocus();
-    reload();
+  // 聚焦态内单击延伸卡 → 调整聚焦（Trail 基础不变——A-012 用户裁定）
+  const handleAdjustFocus = (cardId: string) => {
+    if (focusCardId && cardId !== focusCardId) {
+      canvasStore.getState().setFocus(cardId);
+      reload();
+    }
   };
   // 双击辅助：绑定到 DOM onDoubleClick
   type ReactDoubleClickEvent = { preventDefault(): void };
@@ -656,6 +680,7 @@ export function App() {
                 key={card.id}
                 data-testid={`deck-card-${card.id}`}
                 draggable={isDraggable}
+                onClick={() => handleAdjustFocus(card.id)}
                 onDoubleClick={() => handleSetFocus(card.id)}
                 onDragStart={
                   isDraggable && workloadCard
@@ -702,13 +727,6 @@ export function App() {
           {focusCardId && (
             <span data-testid="focus-indicator" style={{ fontSize: 12, color: "#246" }}>
               聚焦：{cardById(cards, focusCardId)?.name ?? focusCardId}
-              <button
-                data-testid="clear-focus-button"
-                onClick={handleClearFocus}
-                style={{ marginLeft: 8, fontSize: 11, padding: "2px 8px" }}
-              >
-                取消聚焦
-              </button>
             </span>
           )}
         </div>
@@ -728,6 +746,7 @@ export function App() {
                 key={placement.cardId}
                 data-testid={`canvas-unit-${unitCard.id}`}
                 draggable
+                onClick={() => handleAdjustFocus(unitCard.id)}
                 onDoubleClick={makeDoubleClickFocusHandler(unitCard.id)}
                 onDragStart={(event) => {
                   // U-UI-10 画布重定位（最小版）：整卡拖动 = 纯 placement 更新（D-010 UI 状态）。

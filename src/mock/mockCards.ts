@@ -82,7 +82,229 @@ export const mockSlots: CardSlot[] = [
     acceptedCardTypes: deriveAcceptedCardTypes("workload"),
     displayMode: "stack",
     expanded: false
-  }
+  },
+
+  // W2-1（2026-10-27 用户裁定 A-012 + AGENTS §8 封板规则）：所有单元卡补全三种槽
+  {
+    id: "slot-unit-neurosurgery-ward-1-budget",
+    ownerCardId: "unit-neurosurgery-ward-1",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-nursing-team-units",
+    ownerCardId: "unit-nursing-team",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-nursing-team-budget",
+    ownerCardId: "unit-nursing-team",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-director-budget",
+    ownerCardId: "unit-director",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-neurosurgery-ward-2-units",
+    ownerCardId: "unit-neurosurgery-ward-2",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-neurosurgery-ward-2-workloads",
+    ownerCardId: "unit-neurosurgery-ward-2",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-neurosurgery-ward-2-budget",
+    ownerCardId: "unit-neurosurgery-ward-2",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-intervention-room-units",
+    ownerCardId: "unit-intervention-room",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-intervention-room-workloads",
+    ownerCardId: "unit-intervention-room",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-intervention-room-budget",
+    ownerCardId: "unit-intervention-room",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-internal-medicine-units",
+    ownerCardId: "unit-internal-medicine",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-internal-medicine-workloads",
+    ownerCardId: "unit-internal-medicine",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-internal-medicine-budget",
+    ownerCardId: "unit-internal-medicine",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-emergency-units",
+    ownerCardId: "unit-emergency",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-emergency-workloads",
+    ownerCardId: "unit-emergency",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-emergency-budget",
+    ownerCardId: "unit-emergency",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-wang-xx-units",
+    ownerCardId: "unit-wang-xx",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-wang-xx-workloads",
+    ownerCardId: "unit-wang-xx",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-wang-xx-budget",
+    ownerCardId: "unit-wang-xx",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+  {
+    id: "slot-unit-li-xx-units",
+    ownerCardId: "unit-li-xx",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-li-xx-workloads",
+    ownerCardId: "unit-li-xx",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-li-xx-budget",
+    ownerCardId: "unit-li-xx",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
 ];
 
 export const mockCards: AnyCard[] = [

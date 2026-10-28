@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * A-010 画布聚焦模式（用户 2026-10-26 裁定 + DEC-006 重锚定确认）真实 React DOM 行为测试：
- * - 双击 Deck 卡 / 画布卡 → 设为聚焦 → 画布只显示聚焦卡+一级关联（一棵树）；
- * - 聚焦指示 + 取消聚焦按钮；
- * - 取消 → 全部卡恢复显示。
+ * A-010/A-012 画布聚焦模式（用户裁定 + 细化）真实 React DOM 行为测试：
+ * - 双击 Deck 卡 / 画布卡 → 完全聚焦（新 Trail 基础）；
+ * - 聚焦自动布局：一级关联卡无位置时自动获得画布位置（W1-1）；
+ * - 聚焦态内单击延伸卡 → 调整聚焦（Trail 基础不变——A-012）；
+ * - 取消聚焦按钮已移除（双击其他卡即切换）；
+ * - 无取消按钮 → 双击另一张卡 = 切换聚焦。
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import { act } from "react";
@@ -33,24 +35,24 @@ async function renderApp(): Promise<{ container: HTMLElement; cleanup: () => voi
   };
 }
 
-describe("A-010 画布聚焦模式", () => {
+describe("A-010/A-012 画布聚焦模式", () => {
   beforeEach(() => {
     recommendationStore.getState().setRecommendations([]);
     canvasStore.getState().clearFocus();
     resetCanvasBootstrapForTests();
   });
 
-  it("默认无聚焦 → 画布显示全部引导单元卡（4 张）", async () => {
+  it("默认无聚焦 → 画布显示全部引导单元卡（4 张）+ 无聚焦指示", async () => {
     const { container, cleanup } = await renderApp();
     const units = container.querySelectorAll('[data-testid^="canvas-unit-"]');
-    expect(units.length).toBe(4); // 4 个引导单元
+    expect(units.length).toBe(4);
     expect(container.querySelector('[data-testid="focus-indicator"]')).toBeNull();
+    expect(container.querySelector('[data-testid="clear-focus-button"]')).toBeNull(); // A-012：已移除
     cleanup();
   });
 
-  it("双击 Deck 中的单元卡 → 设为聚焦 → 画布只显示聚焦卡 + 一级关联 + 聚焦指示", async () => {
+  it("双击 Deck 卡 → 完全聚焦 → 聚焦指示 + 无取消按钮（A-012：双击其他卡即切换）", async () => {
     const { container, cleanup } = await renderApp();
-    // 默认 unit 标签页 → 双击"介入室"卡
     const deckCard = container.querySelector('[data-testid="deck-card-unit-intervention-room"]');
     expect(deckCard).not.toBeNull();
     await act(async () => {
@@ -58,42 +60,57 @@ describe("A-010 画布聚焦模式", () => {
     });
     await act(async () => { /* flush */ });
 
-    // 聚焦指示出现
     const indicator = container.querySelector('[data-testid="focus-indicator"]');
     expect(indicator).not.toBeNull();
     expect(indicator!.textContent).toContain("介入室");
-
-    // 画布只显示聚焦卡（介入室）+ 一级关联（演示链中它有 structure 关联到神经外科）
-    // 一级关联 = 与介入室有 active 关系的另一端（structure: 神经外科→介入室 → 神经外科是关联）
-    const visibleUnits = container.querySelectorAll('[data-testid^="canvas-unit-"]');
-    // 介入室本身 + 神经外科（一级关联）= 至少 2 张；但介入室不是引导单元卡（没 placement）→ 画布显示神经外科
-    expect(visibleUnits.length).toBeGreaterThanOrEqual(1);
-    expect(visibleUnits.length).toBeLessThanOrEqual(4); // 不超过 4（一棵树）
-
-    // 取消聚焦按钮
-    const clearButton = container.querySelector('[data-testid="clear-focus-button"]');
-    expect(clearButton).not.toBeNull();
+    // A-012：取消按钮已移除
+    expect(container.querySelector('[data-testid="clear-focus-button"]')).toBeNull();
     cleanup();
   });
 
-  it("取消聚焦 → 画布恢复显示全部", async () => {
+  it("双击另一张卡 = 切换聚焦（替代取消按钮——A-012）", async () => {
     const { container, cleanup } = await renderApp();
-    // 先聚焦
-    const deckCard = container.querySelector('[data-testid="deck-card-unit-intervention-room"]');
+    // 先聚焦介入室
+    const deckCard1 = container.querySelector('[data-testid="deck-card-unit-intervention-room"]');
     await act(async () => {
-      deckCard!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+      deckCard1!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
     });
     await act(async () => {});
-    // 取消
-    const clearButton = container.querySelector('[data-testid="clear-focus-button"]');
-    expect(clearButton).not.toBeNull();
+    expect(container.querySelector('[data-testid="focus-indicator"]')!.textContent).toContain("介入室");
+
+    // 双击急诊科 → 切换聚焦
+    const deckCard2 = container.querySelector('[data-testid="deck-card-unit-emergency"]');
+    if (deckCard2) {
+      await act(async () => {
+        deckCard2.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+      });
+      await act(async () => {});
+      expect(container.querySelector('[data-testid="focus-indicator"]')!.textContent).toContain("急诊科");
+    }
+    cleanup();
+  });
+
+  it("聚焦态内单击画布延伸卡 → 调整聚焦到该卡（A-012 Trail 基础不变）", async () => {
+    const { container, cleanup } = await renderApp();
+    // 先双击神经外科聚焦
+    const canvasUnit = container.querySelector('[data-testid="canvas-unit-unit-neurosurgery"]');
     await act(async () => {
-      clearButton!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      canvasUnit!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
     });
     await act(async () => {});
-    expect(container.querySelector('[data-testid="focus-indicator"]')).toBeNull();
-    const units = container.querySelectorAll('[data-testid^="canvas-unit-"]');
-    expect(units.length).toBe(4); // 恢复全部
+    expect(container.querySelector('[data-testid="focus-indicator"]')!.textContent).toContain("神经外科");
+
+    // 聚焦态内单击一病区（可见的一级关联卡）→ 调整聚焦
+    const ward1 = container.querySelector('[data-testid="canvas-unit-unit-neurosurgery-ward-1"]');
+    if (ward1) {
+      await act(async () => {
+        ward1.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      await act(async () => {});
+      const indicator = container.querySelector('[data-testid="focus-indicator"]');
+      expect(indicator).not.toBeNull();
+      expect(indicator!.textContent).toContain("一病区"); // 聚焦已调整
+    }
     cleanup();
   });
 
