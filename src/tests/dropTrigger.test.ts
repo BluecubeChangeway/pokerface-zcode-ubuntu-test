@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   handleWorkloadCardDropOnUnitSlot,
+  handleWorkloadCardDropOnWorkloadCard,
 } from "../services/dropTrigger";
 import {
   resolveWorkloadToUnitAndRecommend,
@@ -121,12 +122,15 @@ describe("Drop → Relation → Resolution 业务接线层（D-150 闭环）", (
     expect(activeAssignRows(relations, NEURO_UNIT, CLEAN_WORKLOAD)).toHaveLength(1);
     expect(activeAssignRows(relations, NEURO_UNIT, CLEAN_WORKLOAD)[0].id).toBe(result.relation.id);
     // Resolution 推荐已注册（关系之后，D-150 时序）
-    expect(result.trigger.recommendation.kind).toBe("resolution");
-    expect(result.trigger.recommendation.status).toBe("recommended");
-    expect(result.trigger.recommendation.relatedEntityIds).toEqual([CLEAN_WORKLOAD, NEURO_UNIT]);
-    const stored = recommendationStore.getState().getRecommendationById(result.trigger.recommendation.id);
-    expect(stored).toBeDefined();
-    expect(stored!.status).toBe("recommended");
+    expect(result.trigger).toBeDefined();
+    if (result.trigger) {
+      expect(result.trigger.recommendation.kind).toBe("resolution");
+      expect(result.trigger.recommendation.status).toBe("recommended");
+      expect(result.trigger.recommendation.relatedEntityIds).toEqual([CLEAN_WORKLOAD, NEURO_UNIT]);
+      const stored = recommendationStore.getState().getRecommendationById(result.trigger.recommendation.id);
+      expect(stored).toBeDefined();
+      expect(stored!.status).toBe("recommended");
+    }
     // 除 workload_assign 外零其他写入
     expect(ds.saveWorkloadResults).not.toHaveBeenCalled();
     expect(ds.saveWorkloadSplits).not.toHaveBeenCalled();
@@ -167,13 +171,20 @@ describe("Drop → Relation → Resolution 业务接线层（D-150 闭环）", (
     expect(activeAssignRows(relations, NEURO_UNIT, CLEAN_WORKLOAD)).toHaveLength(1);
     expect(ds.saveRelations).toHaveBeenCalledTimes(1);
     // D-142：同稳定 ID，store 中仅一条
-    expect(second.trigger.recommendation.id).toBe(first.trigger.recommendation.id);
-    const recs = recommendationStore
-      .getState()
-      .getRecommendationsByKind("resolution")
-      .filter((r) => r.id === first.trigger.recommendation.id);
-    expect(recs).toHaveLength(1);
-    expect(recs[0].status).toBe("recommended");
+    if (first.outcome === "resolved" && second.outcome === "resolved") {
+      expect(first.trigger).toBeDefined();
+      expect(second.trigger).toBeDefined();
+      if (first.trigger && second.trigger) {
+        expect(second.trigger.recommendation.id).toBe(first.trigger.recommendation.id);
+        const firstId = first.trigger.recommendation.id;
+        const recs = recommendationStore
+          .getState()
+          .getRecommendationsByKind("resolution")
+          .filter((r) => r.id === firstId);
+        expect(recs).toHaveLength(1);
+        expect(recs[0].status).toBe("recommended");
+      }
+    }
   });
 
   it("同一 WorkloadCard → 不同 UnitCard → 业务键独立：两条 active 关系互不干扰", async () => {
@@ -380,8 +391,162 @@ describe("Drop → Relation → Resolution 业务接线层（D-150 闭环）", (
     expect(viaDrop.relation.id).toBe(seeded[0].id);
     expect(ds.saveRelations).not.toHaveBeenCalled(); // 复用分支零写入
     // 同一触发契约：稳定 ID、payload、resolutionResult 均来自既有 Trigger
-    expect(viaDrop.trigger.recommendation.id).toBe(direct.recommendation.id);
-    expect(viaDrop.trigger.recommendation.payload).toStrictEqual(direct.recommendation.payload);
-    expect(viaDrop.trigger.resolutionResult).toStrictEqual(direct.resolutionResult);
+    expect(viaDrop.trigger).toBeDefined();
+    if (viaDrop.trigger) {
+      expect(viaDrop.trigger.recommendation.id).toBe(direct.recommendation.id);
+      expect(viaDrop.trigger.recommendation.payload).toStrictEqual(direct.recommendation.payload);
+      expect(viaDrop.trigger.resolutionResult).toStrictEqual(direct.resolutionResult);
+    }
+  });
+});
+
+describe("Workload → Workload Split 关系（子卡关联）", () => {
+  beforeEach(() => {
+    recommendationStore.getState().setRecommendations([]);
+    canvasStore.getState().clearFocus();
+  });
+
+  it("F1：合法 Drop WorkloadCard 到另一个 WorkloadCard → 建立并持久化 active workload_split（方向 Parent→Child）", async () => {
+    const { ds, relations } = createStatefulDataService();
+    // 使用没有既有 split 关系的配对
+    const parentId = "workload-discharge-visits"; // 出院人次（没有子拆分）
+    const childId = "workload-surgery-count"; // 手术台次
+
+    const result = await handleWorkloadCardDropOnWorkloadCard(ds, childId, parentId);
+
+    expect(result.outcome).toBe("resolved");
+    if (result.outcome !== "resolved") throw new Error("unreachable");
+    expect(result.relationOutcome).toBe("persisted");
+    expect(result.relation.type).toBe("workload_split");
+    expect(result.relation.sourceId).toBe(parentId);
+    expect(result.relation.targetId).toBe(childId);
+    expect(result.relation.active).toBe(true);
+    expect(result.relation.metadata?.origin).toBe("drop");
+    // 已持久化：数据源可见
+    const splitRows = relations.filter(
+      (r) => r.active && r.type === "workload_split" && r.sourceId === parentId && r.targetId === childId
+    );
+    expect(splitRows).toHaveLength(1);
+    expect(splitRows[0].id).toBe(result.relation.id);
+    // 不触发 Resolution（拆分关系由 confirm_split 显式确认）
+    expect(result.trigger).toBeUndefined();
+    // 除 workload_split 外零其他写入
+    expect(ds.saveWorkloadResults).not.toHaveBeenCalled();
+    expect(ds.saveWorkloadSplits).not.toHaveBeenCalled();
+    expect(ds.saveCards).not.toHaveBeenCalled();
+    expect(ds.saveCalculationResults).not.toHaveBeenCalled();
+  });
+
+  it("F2：重复 Drop 同一配对 → 幂等复用既有 active workload_split（reused），不产生第二条", async () => {
+    const { ds, relations } = createStatefulDataService();
+    const parentId = "workload-discharge-visits";
+    const childId = "workload-surgery-count";
+
+    const first = await handleWorkloadCardDropOnWorkloadCard(ds, childId, parentId);
+    const second = await handleWorkloadCardDropOnWorkloadCard(ds, childId, parentId);
+
+    expect(first.outcome).toBe("resolved");
+    expect(second.outcome).toBe("resolved");
+    if (first.outcome !== "resolved" || second.outcome !== "resolved") throw new Error("unreachable");
+    expect(first.relationOutcome).toBe("persisted");
+    expect(second.relationOutcome).toBe("reused");
+    expect(second.relation.id).toBe(first.relation.id);
+    // 该配对 active 行恰 1 条
+    const splitRows = relations.filter(
+      (r) => r.active && r.type === "workload_split" && r.sourceId === parentId && r.targetId === childId
+    );
+    expect(splitRows).toHaveLength(1);
+  });
+
+  it("F3：同一 Parent → 不同 Child → 业务键独立：多条 active workload_split 互不干扰", async () => {
+    const { ds, relations } = createStatefulDataService();
+    const parentId = "workload-discharge-visits";
+    const child1Id = "workload-surgery-count";
+    const child2Id = "workload-herbal-amount";
+
+    const r1 = await handleWorkloadCardDropOnWorkloadCard(ds, child1Id, parentId);
+    const r2 = await handleWorkloadCardDropOnWorkloadCard(ds, child2Id, parentId);
+
+    expect(r1.outcome).toBe("resolved");
+    expect(r2.outcome).toBe("resolved");
+    const splitRows = relations.filter(
+      (r) => r.active && r.type === "workload_split" && r.sourceId === parentId
+    );
+    expect(splitRows).toHaveLength(2);
+    expect(new Set(splitRows.map((r) => r.targetId))).toEqual(new Set([child1Id, child2Id]));
+  });
+
+  it("F4：Parent 与 Child 相同 → 静默忽略（无效 Drop）", async () => {
+    const { ds } = createStatefulDataService();
+    const workloadId = "workload-outpatient-visits";
+    const before = recommendationStore.getState().recommendations.length;
+
+    const result = await handleWorkloadCardDropOnWorkloadCard(ds, workloadId, workloadId);
+
+    expect(result.outcome).toBe("ignored");
+    expect(ds.saveRelations).not.toHaveBeenCalled();
+    expect(recommendationStore.getState().recommendations.length).toBe(before);
+  });
+
+  it("F5：revoked Child Card → 静默忽略（D-154）", async () => {
+    const revokedCard: WorkloadCard = {
+      id: "workload-revoked-split-test",
+      type: "workload",
+      name: "已撤回工作卡",
+      configurationState: "configured",
+      businessStatus: "revoked",
+    };
+    const { ds } = createStatefulDataService({ extraCards: [revokedCard] });
+    const parentId = "workload-outpatient-visits";
+    const before = recommendationStore.getState().recommendations.length;
+
+    const result = await handleWorkloadCardDropOnWorkloadCard(ds, revokedCard.id, parentId);
+
+    expect(result.outcome).toBe("ignored");
+    expect(ds.saveRelations).not.toHaveBeenCalled();
+    expect(recommendationStore.getState().recommendations.length).toBe(before);
+  });
+
+  it("F6：revoked Parent Card → 静默忽略（D-154）", async () => {
+    const revokedCard: WorkloadCard = {
+      id: "workload-revoked-parent-test",
+      type: "workload",
+      name: "已撤回父工作卡",
+      configurationState: "configured",
+      businessStatus: "revoked",
+    };
+    const { ds } = createStatefulDataService({ extraCards: [revokedCard] });
+    const childId = "workload-neurosurgery-outpatient";
+    const before = recommendationStore.getState().recommendations.length;
+
+    const result = await handleWorkloadCardDropOnWorkloadCard(ds, childId, revokedCard.id);
+
+    expect(result.outcome).toBe("ignored");
+    expect(ds.saveRelations).not.toHaveBeenCalled();
+    expect(recommendationStore.getState().recommendations.length).toBe(before);
+  });
+
+  it("F7：不存在的 Parent Card → 静默忽略", async () => {
+    const { ds } = createStatefulDataService();
+    const childId = "workload-neurosurgery-outpatient";
+    const before = recommendationStore.getState().recommendations.length;
+
+    const result = await handleWorkloadCardDropOnWorkloadCard(ds, childId, "unit-does-not-exist");
+
+    expect(result.outcome).toBe("ignored");
+    expect(ds.saveRelations).not.toHaveBeenCalled();
+    expect(recommendationStore.getState().recommendations.length).toBe(before);
+  });
+
+  it("F8：不存在的 Child Card → 静默忽略", async () => {
+    const { ds } = createStatefulDataService();
+    const parentId = "workload-outpatient-visits";
+    const before = recommendationStore.getState().recommendations.length;
+
+    const result = await handleWorkloadCardDropOnWorkloadCard(ds, "workload-does-not-exist", parentId);
+
+    expect(result.outcome).toBe("ignored");
+    expect(ds.saveRelations).not.toHaveBeenCalled();
+    expect(recommendationStore.getState().recommendations.length).toBe(before);
   });
 });

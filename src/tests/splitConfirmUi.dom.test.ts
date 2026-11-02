@@ -8,6 +8,7 @@ import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../app/App";
+import { UIProviders } from "../app/providers/UIProviders";
 import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import { resetCanvasBootstrapForTests } from "../app/canvasBootstrap";
@@ -62,8 +63,29 @@ async function renderApp(): Promise<{ container: HTMLElement; cleanup: () => voi
   let root: Root | undefined;
   await act(async () => {
     root = createRoot(container);
-    root.render(createElement(App));
+    root.render(createElement(UIProviders, null, createElement(App)));
   });
+  // Switch to calculation view since tests expect CalculationView
+  await act(async () => {
+    const tabs = container.querySelectorAll('button[role="tab"]');
+    console.log("Tabs found:", tabs.length);
+    for (const tab of tabs) {
+      console.log("Tab text:", tab.textContent);
+      if (tab.textContent?.includes("绩效测算")) {
+        (tab as HTMLElement).click();
+        break;
+      }
+    }
+  });
+  // Wait for animation and rendering to complete
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+  });
+  // Debug: check if recommendation list exists
+  const recList = container.querySelector('[data-testid="recommendation-list"]');
+  console.log("Recommendation list found:", !!recList);
+  const recItems = container.querySelectorAll('[data-testid^="recommendation-item-"]');
+  console.log("Recommendation items found:", recItems.length);
   return {
     container,
     cleanup: () => {
@@ -75,9 +97,33 @@ async function renderApp(): Promise<{ container: HTMLElement; cleanup: () => voi
 
 async function selectRec(container: HTMLElement, recId: string) {
   await act(async () => {
-    (container.querySelector(`[data-testid="recommendation-item-${recId}"]`) as HTMLElement).click();
+    // First, click the recommendation item
+    for (let i = 0; i < 50; i++) {
+      const elements = container.querySelectorAll('[data-testid^="recommendation-item-"]');
+      for (const element of elements) {
+        const testId = element.getAttribute('data-testid');
+        if (testId === 'recommendation-item-' + recId) {
+          console.log("Found matching element, clicking...");
+          (element as HTMLElement).click();
+          break;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
   });
-}
+  // Wait for the split parameters panel to appear (splitDraft to be set)
+  await act(async () => {
+    for (let i = 0; i < 50; i++) {
+      const panel = container.querySelector('[data-testid="split-parameters-panel"]');
+      if (panel) {
+        console.log("Split parameters panel found");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error('Split parameters panel not found after waiting');
+  });
+};
 
 /** React 受控输入需要原生 value setter 绕过 React 的 value tracker（happy-dom 实测必要） */
 function setNativeInputValue(input: HTMLInputElement, value: string) {

@@ -206,7 +206,7 @@ export const recommendationStore = createStore<RecommendationState>((set, get) =
       // 先记录决策
       get().recordUserDecision(decision);
       
-      const result = executeUserDecision(decision, context);
+      const result = await executeUserDecision(decision, context);
       
       // ActionExecutor 成功后，先持久化业务事实，再标记 accepted
       if (result.success && context.dataService) {

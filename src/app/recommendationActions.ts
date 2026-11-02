@@ -30,14 +30,11 @@ import type { ActionExecutorContext } from "../services/actionExecutor";
 export function confirmActionFor(
   recommendation: Recommendation
 ): UserDecisionAction | undefined {
-  // W4：单元拆分推荐（kind="card"，payload.type="unit_split"）→ 确认按钮
-  if (recommendation.kind === "card") {
-    const cardPayload = recommendation.payload as { type?: string } | undefined;
-    if (cardPayload?.type === "unit_split") return "confirm_unit_split";
-    return undefined;
-  }
-  if (recommendation.kind !== "resolution") return undefined;
-  const payload = recommendation.payload as Partial<ResolutionRecommendation> | undefined;
+  if (recommendation.kind !== "resolution" && recommendation.kind !== "card") return undefined;
+  const payload = recommendation.payload as
+    | Partial<ResolutionRecommendation>
+    | { type?: string; sourceUnitId?: string; targetUnitId?: string; newUnitName?: string; newUnitKind?: string }
+    | undefined;
   switch (payload?.type) {
     case "use_existing_result":
     case "use_existing_result_with_confirmation":
@@ -46,6 +43,8 @@ export function confirmActionFor(
       return "confirm_use_existing_parent";
     case "split_workload":
       return "confirm_split";
+    case "unit_split":
+      return "confirm_unit_split";
     default:
       return undefined;
   }
@@ -63,12 +62,11 @@ export async function buildActionContext(
   storeRecommendations: Recommendation[],
   workloadCard?: { id: string; type: string; name: string; workloadResultId?: string; businessStatus?: "active" | "revoked" }
 ): Promise<ActionExecutorContext> {
-  const [relations, cards, results, splits, provenances] = await Promise.all([
+  const [relations, cards, results, splits] = await Promise.all([
     dataService.getRelations(),
     dataService.getCards(),
     dataService.getWorkloadResults(),
     dataService.getWorkloadSplits(),
-    dataService.getSplitProvenances(),
   ]);
   const recommendations = new Map(
     storeRecommendations.map((recommendation) => [recommendation.id, recommendation])
@@ -96,8 +94,6 @@ export async function buildActionContext(
     existingWorkloadSplits: new Map(
       splits.map((sp: any) => [sp.id, sp])
     ),
-    // R3 拆分溯源（查询投影）：confirm_split 复用匹配 + retry 身份校验的数据来源
-    existingSplitProvenances: [...provenances],
     recommendations,
     endpointKinds: new Map(cards.map((c: any) => [c.id, c.type])),
     dataService,

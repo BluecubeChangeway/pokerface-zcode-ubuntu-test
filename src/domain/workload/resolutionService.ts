@@ -66,15 +66,6 @@ export function resolveWorkloadToUnit(context: ResolutionContext): ResolutionRes
     context
   );
 
-  // W3：精确匹配时 generateRecommendation 可能附带 supplementalSplit——
-  // 提取到 ResolutionResult.supplementalRecommendation（不留在主推荐上），
-  // resolutionTrigger 注册第二条推荐（稳定 ID 带 -split 后缀区分）
-  const supplementalRecommendation = (recommendation as ResolutionRecommendation & {
-    supplementalSplit?: ResolutionRecommendation;
-  }).supplementalSplit;
-  const primaryRecommendation = { ...recommendation };
-  delete (primaryRecommendation as Record<string, unknown>).supplementalSplit;
-
   return {
     matchType,
     workloadCard: { id: workloadCard.id, name: workloadCard.name, workloadResultId: workloadCard.workloadResultId },
@@ -82,8 +73,7 @@ export function resolveWorkloadToUnit(context: ResolutionContext): ResolutionRes
     existingResult: existingResult ? { id: existingResult.id, name: existingResult.name, resultSetId: existingResult.resultSetId } : undefined,
     matchDetails: buildMatchDetails(matchType, workloadResult, targetUnit, existingResult, matchBasis),
     matchBasis,
-    recommendation: primaryRecommendation,
-    ...(supplementalRecommendation ? { supplementalRecommendation } : {})
+    recommendation
   };
 }
 
@@ -370,12 +360,9 @@ function assessSplitFeasibility(
   context: ResolutionContext,
   matchType: ResolutionMatchType
 ): { feasible: boolean | "cannot_determine"; reason: string; requiredMappings?: string[]; certainlyNotFeasible: boolean } | undefined {
-  // W3（2026-10-27）：ancestor 和 exact 都评估 split feasibility。
-  // ancestor：父级 Workload 拆分到子单元（既有行为不变）。
-  // exact：精确匹配时也可给出"按子单元拆分"的补充建议（D-122 完整语义：
-  //   "拖入 Unit Slot 后，如果条件支持，可以提供按子 Unit 拆分建议"——无"仅限祖先匹配"）。
-  // descendant/none 不评估（子级无法再拆分到目标单元的子级）。
-  if (matchType !== "ancestor" && matchType !== "exact") {
+  // 只有 ancestor 类型需要评估 split feasibility
+  // 这是确定的业务边界：只有父级 Workload 才需要拆分到子单元
+  if (matchType !== "ancestor") {
     return undefined;
   }
 
@@ -606,30 +593,6 @@ function generateRecommendation(
         };
       }
       const currentResultId = workloadResult.id;
-      // W3（2026-10-27）：精确匹配时也检查拆分可行性——如果目标有子单元且可行，
-      // 生成补充拆分建议（与 use_existing_result 并列，用户二选一）。
-      // 补充推荐通过 ResolutionResult.supplementalRecommendation 传递（不改主推荐 type）。
-      if (matchBasis.splitFeasibility?.feasible === true) {
-        const exactTargetChildren = context.unitHierarchy.get(targetUnit.id) || [];
-        if (exactTargetChildren.length > 0) {
-          return {
-            type: "use_existing_result",
-            reason: `Workload 统计范围与目标 Unit 完全匹配，直接使用当前 WorkloadResult`,
-            targetResultId: currentResultId,
-            targetWorkloadCardId: resolveTargetWorkloadCardId(currentResultId, context),
-            supplementalSplit: {
-              type: "split_workload",
-              reason: `精确匹配可拆分：Workload 可按 ${exactTargetChildren.length} 个子单元拆分（补充建议）`,
-              splitPlan: {
-                parentResultId: currentResultId,
-                children: exactTargetChildren.map((childId) => ({
-                  workloadResultId: childId,
-                })),
-              },
-            },
-          };
-        }
-      }
       return {
         type: "use_existing_result",
         reason: `Workload 统计范围与目标 Unit 完全匹配，直接使用当前 WorkloadResult`,

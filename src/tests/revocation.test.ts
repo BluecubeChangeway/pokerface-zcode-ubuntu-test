@@ -612,7 +612,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const seeded = await seedRealPathFacts(ds, s);
     const { decision, rec } = makeSplitDecision(s, seeded.parentResult.id, "2026-10-08T10:00:00.000Z", { explicitIds: true });
 
-    const first = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const first = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(first.success).toBe(true);
     await submitActionResult(first, ds, rec.id);
 
@@ -631,7 +631,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     expect(impact.revokedWorkloadResults.map((r) => r.id)).toEqual([`wr-exp-c2-${s}`]);
 
     // 同批次 retry：c1 虽被保留（result 仍 active、内容一致），但其拆分记录已标记 revoked → 必须拒绝
-    const retry = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const retry = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(retry.success).toBe(false);
     expect(retry.error).toMatch(/D-155|撤回/);
 
@@ -648,7 +648,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const seeded = await seedRealPathFacts(ds, s);
     const { decision, rec } = makeSplitDecision(s, seeded.parentResult.id, "2026-10-08T10:00:00.000Z");
 
-    const first = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const first = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(first.success).toBe(true);
     await submitActionResult(first, ds, rec.id);
     expect(await activeSplitEdgeCount(ds, seeded.parentCard.id)).toBe(2);
@@ -657,9 +657,10 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     expect(await activeSplitEdgeCount(ds, seeded.parentCard.id)).toBe(0);
 
     // 同批次 retry：executor 不含显式 id 检查 → 通过；必须由持久化边界拒绝
-    const retry = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
-    expect(retry.success).toBe(true);
-    await expect(submitActionResult(retry, ds, rec.id)).rejects.toThrow(/D-155|撤回/);
+    const retry = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    // executor 层现在即检测同批次 revoked split 并拒绝（D-155/D-158 阶段顺序修正）
+    expect(retry.success).toBe(false);
+    expect(retry.error).toMatch(/D-155|撤回|revoked/);
 
     // 事实未复活：无新 active 拆分边、revoked 结果未被覆盖为 active
     expect(await activeSplitEdgeCount(ds, seeded.parentCard.id)).toBe(0);
@@ -676,11 +677,11 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const seeded = await seedRealPathFacts(ds, s);
     const { decision, rec } = makeSplitDecision(s, seeded.parentResult.id, "2026-10-08T10:00:00.000Z", { explicitIds: true });
 
-    const first = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const first = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(first.success).toBe(true);
     await submitActionResult(first, ds, rec.id);
 
-    const retry = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const retry = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(retry.success).toBe(true);
     await expect(submitActionResult(retry, ds, rec.id)).resolves.toBeUndefined();
 
@@ -698,7 +699,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const firstAt = "2026-10-08T10:00:00.000Z";
     const { decision: firstDecision, rec } = makeSplitDecision(s, seeded.parentResult.id, firstAt);
 
-    const first = executeUserDecision(firstDecision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const first = await executeUserDecision(firstDecision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(first.success).toBe(true);
     await submitActionResult(first, ds, rec.id);
     const firstResultIds = first.createdWorkloadResults.map((r) => r.id);
@@ -707,7 +708,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
 
     // 新决策（不同 decidedAt → 新 executionBatch）重新配置
     const second = makeSplitDecision(s, seeded.parentResult.id, "2026-10-08T11:00:00.000Z");
-    const secondRun = executeUserDecision(second.decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const secondRun = await executeUserDecision(second.decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(secondRun.success).toBe(true);
     await expect(submitActionResult(secondRun, ds, rec.id)).resolves.toBeUndefined();
 
@@ -881,10 +882,13 @@ describe("Split 撤回语义（D-153～D-155）", () => {
       addSpy.mock.invocationCallOrder[0]
     );
     expect(recommendationStore.getState().recommendations.length).toBe(recCountBefore + 1);
-    expect(dropResult.trigger.recommendation.relatedEntityIds).toEqual([
-      u.parentCard.id,
-      u.unitUser.id,
-    ]);
+    expect(dropResult.trigger).toBeDefined();
+    if (dropResult.trigger) {
+      expect(dropResult.trigger.recommendation.relatedEntityIds).toEqual([
+        u.parentCard.id,
+        u.unitUser.id,
+      ]);
+    }
 
     saveSpy.mockRestore();
     addSpy.mockRestore();
@@ -1105,7 +1109,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const ds = new MockDataService();
     const seeded = await seedRealPathFacts(ds, s);
     const { decision, rec } = makeSplitDecision(s, seeded.parentResult.id, "2026-10-09T10:00:00.000Z", { explicitIds: true });
-    const first = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const first = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(first.success).toBe(true);
     await submitActionResult(first, ds, rec.id);
     const splitsBeforeRevoke = (await ds.getWorkloadSplits()).length;
@@ -1117,7 +1121,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     expect((await ds.getWorkloadSplits()).length).toBe(splitsBeforeRevoke);
 
     // 同批次 retry：终结检查先于存在性跳过（D-158 顺序修正）→ executor 层拒绝
-    const retry = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const retry = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(retry.success).toBe(false);
     expect(retry.error).toMatch(/D-155|撤回/);
     // 数据未复活
@@ -1134,15 +1138,15 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const ds2 = new MockDataService();
     const seeded2 = await seedRealPathFacts(ds2, s2);
     const gen = makeSplitDecision(s2, seeded2.parentResult.id, "2026-10-09T10:00:00.000Z");
-    const firstGen = executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
+    const firstGen = await executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
     expect(firstGen.success).toBe(true);
     await submitActionResult(firstGen, ds2, gen.rec.id);
     await executeFullPathRevocation(ds2, seeded2.parentCard.id);
 
-    // 同批次 retry：executor 无显式 id 检查 → 通过；持久化边界 stage-0 终结检查拒绝
-    const retryGen = executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
-    expect(retryGen.success).toBe(true);
-    await expect(submitActionResult(retryGen, ds2, gen.rec.id)).rejects.toThrow(/D-155|撤回/);
+    // 同批次 retry：executor 现在即检测同批次 revoked split 并拒绝（D-155/D-158 阶段顺序修正）
+    const retryGen = await executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
+    expect(retryGen.success).toBe(false);
+    expect(retryGen.error).toMatch(/D-155|撤回|revoked/);
     // 数据未复活
     const genResultIds = firstGen.createdWorkloadResults.map((r) => r.id);
     const resultsAfterGen = await ds2.getWorkloadResults();
@@ -1186,7 +1190,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const ds = new MockDataService();
     const seeded = await seedRealPathFacts(ds, s);
     const { decision, rec } = makeSplitDecision(s, seeded.parentResult.id, "2026-10-09T12:00:00.000Z", { explicitIds: true });
-    const first = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const first = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(first.success).toBe(true);
     await submitActionResult(first, ds, rec.id);
 
@@ -1200,7 +1204,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     // 窗口状态：阶段①～③已落库（记录已标记、关系已软删、核算已失效），卡/结果未删
 
     // 窗口内对同一旧 UserDecision 再执行（真实调用链：executor → ActionSubmissionService）
-    const midRetry = executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
+    const midRetry = await executeUserDecision(decision, await buildExecutorContext(ds, rec, seeded.parentCard));
     expect(midRetry.success).toBe(false);
     expect(midRetry.error).toMatch(/D-155|撤回/);
 
@@ -1224,7 +1228,7 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     const ds2 = new MockDataService();
     const seeded2 = await seedRealPathFacts(ds2, s2);
     const gen = makeSplitDecision(s2, seeded2.parentResult.id, "2026-10-09T12:00:00.000Z");
-    const firstGen = executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
+    const firstGen = await executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
     expect(firstGen.success).toBe(true);
     await submitActionResult(firstGen, ds2, gen.rec.id);
 
@@ -1238,9 +1242,10 @@ describe("Split 撤回语义（D-153～D-155）", () => {
     // 窗口状态：卡已删（阶段⑤成功）、结果未删（阶段⑥失败）
 
     // 旧 UserDecision 再执行：executor 通过（生成型无显式 id 检查）→ 持久化边界 stage-0 终结检查拒绝
-    const midRetryGen = executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
-    expect(midRetryGen.success).toBe(true);
-    await expect(submitActionResult(midRetryGen, ds2, gen.rec.id)).rejects.toThrow(/D-155|撤回/);
+    const midRetryGen = await executeUserDecision(gen.decision, await buildExecutorContext(ds2, gen.rec, seeded2.parentCard));
+    // executor 层现在即检测同批次 revoked split 并拒绝（D-155/D-158 阶段顺序修正）
+    expect(midRetryGen.success).toBe(false);
+    expect(midRetryGen.error).toMatch(/D-155|撤回|revoked/);
 
     // 撤回重试 → 收敛；已删对象零重建、无新增 active 拆分边
     await executeFullPathRevocation(ds2, seeded2.parentCard.id);

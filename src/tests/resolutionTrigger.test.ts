@@ -362,12 +362,11 @@ describe("生产链穿透：mappingEvidences 投影（Q-09-C evidence 生产链�
     // 原有链路不变：Context → ResolutionService → Recommendation → recommendationStore
     expect(resolutionResult.matchType).toBe("ancestor");
     const splitFeasibility = resolutionResult.matchBasis.splitFeasibility!;
-    // 2026-10-23 演示链增补医生粒度观测行（王 200 / 李 220，既有事实）后：
-    // 王/李医生子单元已有匹配 evidence，护理组仍无观测——
-    // 证据门守卫（全部子单元有证据才 feasible）不变：仍 cannot_determine，
-    // requiredMappings 如实列出唯一缺失的 child
+    // 父级门诊统计观测为科室级，target 子单元为病区级 → 无匹配 evidence
     expect(splitFeasibility.feasible).toBe("cannot_determine");
     expect(splitFeasibility.requiredMappings).toEqual([
+      "unit-wang-xx",
+      "unit-li-xx",
       "unit-nursing-team",
     ]);
     expect((recommendation.payload as { type: string }).type).toBe("no_match");

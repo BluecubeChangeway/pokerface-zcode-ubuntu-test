@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { AnyCard, UnitCard, WorkloadCard } from "../domain/card/types";
 import type { WorkloadResult } from "../domain/workload/types";
 import type { Recommendation } from "../domain/recommendation/types";
-import { MockDataService } from "../services/MockDataService";
+import { MockDataService, resetMockDataService } from "../services/MockDataService";
 import { revokeSplitLayer, revokeDerivedPath } from "../services/revocationEntry";
 import { recommendationStore } from "../stores/recommendationStore";
 import { buildActionContext, sourceWorkloadCardFrom } from "../app/recommendationActions";
@@ -156,6 +156,7 @@ async function provenances(ds: MockDataService): Promise<SplitProvenanceRecord[]
 describe("R3 拆分溯源与跨批次复用（D-157 规则 B 实施，三场景 + retry 纪律）", () => {
   beforeEach(() => {
     recommendationStore.getState().setRecommendations([]);
+    resetMockDataService();
   });
 
   it("场景1 两科室同拆一张卡：第二次同条件拆分复用既有结果与卡片（Q2：新名忽略）", async () => {
@@ -312,7 +313,7 @@ describe("R3 拆分溯源与跨批次复用（D-157 规则 B 实施，三场景 
     const context = await buildActionContext(
       ds, recommendationStore.getState().recommendations, sourceWorkloadCardFrom(rec2, cards)
     );
-    const retryResult = executeUserDecision(decision, context);
+    const retryResult = await executeUserDecision(decision, context);
     expect(retryResult.success).toBe(true);
     expect((retryResult.reusedChildResultIds ?? []).sort())
       .toEqual((await scopedResults(ds, u)).filter((r) => r.businessStatus !== "revoked").map((r) => r.id).sort());
@@ -354,9 +355,9 @@ describe("R3 拆分溯源与跨批次复用（D-157 规则 B 实施，三场景 
     const context = await buildActionContext(
       ds, recommendationStore.getState().recommendations, sourceWorkloadCardFrom(rec2, cards)
     );
-    const retryResult = executeUserDecision(decision, context);
+    const retryResult = await executeUserDecision(decision, context);
     expect(retryResult.success).toBe(false);
-    expect(retryResult.error).toMatch(/已不存在或已被撤回.*重新确认拆分/s);
+    expect(retryResult.error).toMatch(/executionBatch 已被撤回终结.*revoked.*不得复活已撤回的 Split 事实/);
 
     // 新决策（新批次）：按当前事实重建
     const rec3 = makeRec(`rec-split-3-${s}`, u);

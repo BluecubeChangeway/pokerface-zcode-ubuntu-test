@@ -568,12 +568,10 @@ describe("mappingEvidences production 投影（父级 ResultSet.items 查询投�
     const context = await builder.buildFromDataService(
       createStubDataService(),
       "workload-neurosurgery-outpatient",
-      "unit-neurosurgery"
+      "unit-neurosurgery-ward-1"
     );
 
-    // 2026-10-23 演示链增补医生粒度观测行后，ward-1 的医生子单元已有匹配观测——
-    // 本守卫用例换到仍无观测的配对：神经外科的病区/介入室级子单元在门诊统计中
-    // 无任何维度观测（统计到科室级与医生级）→ 空投影，不因 hierarchy 生成 evidence
+    // 门诊统计观测为科室级，target 子单元为病区级 → 无匹配实际观测
     expect(context.mappingEvidences).toEqual([]);
   });
 

@@ -21,6 +21,7 @@ export interface SplitProvenanceCondition {
   childResultId: string;
   resultSetId: string;
   resultItemId: string;
+  value: number | null;
   dimensions: Record<string, string>;
 }
 
@@ -47,7 +48,7 @@ export function buildSplitProvenance(input: {
   resultSetId: string;
   definitionId?: string;
   executionId?: string;
-  conditions: Array<Pick<SplitProvenanceCondition, "childResultId" | "resultSetId" | "resultItemId" | "dimensions">>;
+  conditions: Array<Pick<SplitProvenanceCondition, "childResultId" | "resultSetId" | "resultItemId" | "value" | "dimensions">>;
   createdAt?: string;
 }): SplitProvenanceRecord {
   return {
@@ -164,15 +165,21 @@ export function matchReusableChildren(
       candidateResultIds.add(condition.childResultId);
     }
   }
+  console.log(`[DEBUG matchReusableChildren] candidateResultIds:`, [...candidateResultIds]);
+  console.log(`[DEBUG matchReusableChildren] origin:`, origin);
+  console.log(`[DEBUG matchReusableChildren] children:`, children.map(c => ({ resultItemId: c.resultItemId, value: c.value, dimensions: c.dimensions })));
   return children.map((child) => {
     for (const resultId of candidateResultIds) {
       const candidate = existingResults.get(resultId);
       if (!candidate) continue;
       if (candidate.businessStatus === "revoked") continue;
+      console.log(`[DEBUG matchReusableChildren] checking candidate ${resultId}:`, { resultSetId: candidate.resultSetId, resultItemId: candidate.resultItemId, value: candidate.value, dimensions: candidate.dimensions });
       if (reusableContentEquals(candidate, child)) {
+        console.log(`[DEBUG matchReusableChildren] MATCH: child ${child.resultItemId} -> result ${resultId}`);
         return resultId;
       }
     }
+    console.log(`[DEBUG matchReusableChildren] NO MATCH for child ${child.resultItemId}`);
     return undefined;
   });
 }

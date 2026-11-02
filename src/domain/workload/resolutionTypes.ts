@@ -50,6 +50,10 @@ export interface MappingEvidence {
   confidence?: "high" | "medium" | "low";
   /** 证据来源描述（须描述"来自父级 ResultSet 的实际维度观测"，不得表述为"系统已确认映射关系"） */
   evidenceDescription: string;
+  /** 要创建的新单元卡名称（拆分确认时使用） */
+  newUnitName?: string;
+  /** 要创建的新单元卡类型（拆分确认时使用） */
+  newUnitKind?: UnitCard["unitKind"];
 }
 
 export type ResolutionMatchType = "exact" | "ancestor" | "descendant" | "none";
@@ -124,12 +128,6 @@ export interface ResolutionRecommendation {
     unselectedChildren?: string[];
   };
   options?: string[];
-  /**
-   * W3（2026-10-27）：精确匹配时的补充拆分建议——由 generateRecommendation 在
-   * exact 匹配 + 目标有子单元 + 拆分可行时附加；resolveWorkloadToUnit 提取到
-   * ResolutionResult.supplementalRecommendation，不保留在主推荐上。
-   */
-  supplementalSplit?: ResolutionRecommendation;
 }
 
 export interface ResolutionResult {
@@ -140,12 +138,6 @@ export interface ResolutionResult {
   matchDetails: string;
   matchBasis: MatchBasis;
   recommendation: ResolutionRecommendation;
-  /**
-   * W3（2026-10-27 用户批复 D-122 完整语义）：精确匹配时的补充拆分建议——
-   * 与主推荐（use_existing_result）并列，用户二选一（直接用 或 按子单元拆分）。
-   * 仅在精确匹配 + 目标有子单元 + 拆分可行性确定时产生，不改变主推荐。
-   */
-  supplementalRecommendation?: ResolutionRecommendation;
 }
 
 export interface ResolutionContext {

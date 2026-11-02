@@ -1,5 +1,5 @@
 import type { DataService } from "./DataService";
-import type { CardSlot, WorkloadCard } from "../domain/card/types";
+import type { CardSlot, WorkloadCard, BudgetCard, UnitCard } from "../domain/card/types";
 import { canAcceptCard, createRelation } from "../domain/relation/relationService";
 import type { Relation } from "../domain/relation/types";
 import type { RelationEndpointKind } from "../domain/relation/endpointRules";
@@ -8,7 +8,6 @@ import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
 import type { ResolutionTriggerResult } from "./resolutionTrigger";
 import { submitDropAssignRelation } from "./ActionSubmissionService";
 import { analyzeBudgetAndRecommend } from "./budgetRecommendation";
-import { checkAndRecommendUnitSplit } from "./unitSplitService";
 import { v4 as uuidv4 } from "uuid";
 
 /**
@@ -39,6 +38,23 @@ import { v4 as uuidv4 } from "uuid";
 /** Drop 建立关系的持久化结果：persisted = 本次新建并保存；reused = 已有同键 active 关系，幂等复用 */
 export type DropRelationOutcome = "persisted" | "reused";
 
+/** UnitCard 拖到 Canvas 空白处的结果 */
+export type UnitCardDropResult =
+  | { outcome: "placed"; unitCardId: string; x: number; y: number }
+  | { outcome: "ignored" };
+
+/** 结构关系操作结果（含 move/unassign 等各类操作的统一返回） */
+export type StructureRelationOutcome = 
+  | { outcome: "structure_resolved"; relationOutcome: "persisted" | "reused"; relation: Relation }
+  | { outcome: "structure_recommendation_created"; recommendation: import("../domain/recommendation/types").Recommendation; relationOutcome: "persisted" | "reused"; relation: Relation }
+  | { outcome: "unit_moved"; relationOutcome: "persisted" | "reused"; relation: Relation; deactivatedRelation?: Relation }
+  | { outcome: "budget_resolved"; relationOutcome: "persisted" | "reused"; relation: Relation }
+  | { outcome: "budget_moved"; relationOutcome: "persisted" | "reused"; relation: Relation; deactivatedRelation?: Relation }
+  | { outcome: "no_op_same_unit" }
+  | { outcome: "unassigned"; deactivatedRelation?: Relation }
+  | { outcome: "ignored"; error?: string }
+  | { outcome: "relation_failed"; error: string };
+
 /** drop 处理结果 */
 export type DropTriggerResult =
   | {
@@ -46,11 +62,38 @@ export type DropTriggerResult =
       relationOutcome: DropRelationOutcome;
       /** 本次 Drop 确立的 active workload_assign（新建行或被复用的既有行） */
       relation: Relation;
-      trigger: ResolutionTriggerResult;
+      trigger?: ResolutionTriggerResult;
     }
   /** Relation 创建/持久化失败：未触发 Resolution、未注册 Recommendation */
   | { outcome: "relation_failed"; error: string }
-  | { outcome: "ignored" };
+  | { outcome: "ignored" }
+  /** 结构关系操作结果 */
+  | StructureRelationOutcome
+  // 以下为 move/unassign 等操作直接返回的结果类型
+  | { outcome: "unit_moved"; relationOutcome: "persisted" | "reused"; relation: Relation; deactivatedRelation?: Relation }
+  | { outcome: "budget_moved"; relationOutcome: "persisted" | "reused"; relation: Relation; deactivatedRelation?: Relation }
+  | { outcome: "no_op_same_unit" }
+  | { outcome: "unassigned"; deactivatedRelation?: Relation }
+  | { outcome: "ignored" }
+  | { outcome: "relation_failed"; error: string }
+  // move/unassign 操作的完整结果类型（用于 dropInteraction 映射后返回）
+  | { outcome: "unit_moved"; relationOutcome: "persisted" | "reused"; relation: Relation; deactivatedRelation?: Relation; error?: string }
+  | { outcome: "budget_moved"; relationOutcome: "persisted" | "reused"; relation: Relation; deactivatedRelation?: Relation; error?: string }
+  | { outcome: "moved"; relationOutcome?: "persisted" | "reused"; relation?: Relation; deactivatedRelation?: Relation; resubmittedResolution?: { workloadCardId: string; targetUnitId: string }; invalidatedRecommendationIds?: string[]; error?: string }
+  | { outcome: "no_op_same_unit" }
+  | { outcome: "unassigned"; deactivatedRelation?: Relation }
+  | { outcome: "no_op" }
+  | { outcome: "ignored" }
+  | { outcome: "relation_failed"; error: string }
+  // 完整的 moveRelation/unassignRelation 结果类型（包含 ignored outcome）
+  | { outcome: "moved" | "ignored" | "no_op_same_unit" | "relation_failed"; relationOutcome?: "persisted" | "reused"; relation?: Relation; deactivatedRelation?: Relation; resubmittedResolution?: { workloadCardId: string; targetUnitId: string }; invalidatedRecommendationIds?: string[]; error?: string }
+  | { outcome: "moved" | "ignored" | "no_op_same_unit" | "relation_failed"; relationOutcome?: "persisted" | "reused"; relation?: Relation; deactivatedRelation?: Relation; error?: string }
+  | { outcome: "moved" | "ignored" | "no_op_same_unit" | "relation_failed"; relationOutcome?: "persisted" | "reused"; relation?: Relation; deactivatedRelation?: Relation; resubmittedResolution?: { workloadCardId: string; targetUnitId: string }; invalidatedRecommendationIds?: string[]; error?: string }
+  | { outcome: "no_op_same_unit" }
+  | { outcome: "unassigned"; deactivatedRelation?: Relation }
+  | { outcome: "no_op" }
+  | { outcome: "ignored" }
+  | { outcome: "relation_failed"; error: string };
 
 /**
  * 处理 WorkloadCard 落到 UnitCard 的 Workload Slot 上的拖放。
@@ -175,34 +218,22 @@ async function resolveAfterRelation(
 }
 
 /**
- * Budget Drop → Relation 业务接线层（U-UI-13，2026-10-26）
+ * 处理 BudgetCard 落到 UnitCard 的 Budget Slot 上的拖放。
  *
- * 用户语义方向（2026-10-26 原话要点）："budget 卡原则上应与 workload 卡在界面交互上
- * 十分接近，也可以被拖拽到某个单元卡下成为某个单元的预算卡片。"
+ * 合法条件（全部满足才继续）：
+ * - slot.type === "budget"
+ * - canAcceptCard(slot, "budget") === true（enabled && !locked）
+ * - slot.ownerCardId 存在
+ * - slot.ownerCardId 对应的目标卡真实存在且 type === "unit"
+ * - 被拖入的 BudgetCard 存在且未 revoked
  *
- * 语义依据（已封板，非新裁定）：
- * - budget_assign = 预算真正分配给 UnitCard（Q-05 / D-023：allocation 是真正分配）；
- * - 方向 BudgetCard → UnitCard（端点规则 endpointRules：source=budget, target=unit——
- *   注意与 workload_assign 相反）；
- * - P2-1 同业务键幂等：active + type + sourceId + targetId（submitDropAssignRelation
- *   通用按 relation 自身字段判重，无需特判）。
- *
- * 与 workload 路径的关键边界（如实记录）：
- * - **无 Resolution 触发**：Resolution / Recommendation 是工作量域机制（D-128：
- *   "Workload Resolution"），预算拖入不触发解析、不产生推荐——D-150 的 Resolution 部分
- *   是工作量卡专属；预算拖入到"确认槽位合法 → 建立关系"为止；
- * - 预算**不自动激活 Unit Slot**（D-019 既有边界）；
- * - AGENTS §20 同语义：无效目标（非 budget 槽 / 目标卡不存在 / revoked 卡）静默取消。
+ * 无效目标：静默取消（AGENTS §20）——返回 { outcome: "ignored" }。
  */
 export async function handleBudgetCardDropOnUnitSlot(
   dataService: DataService,
   budgetCardId: string,
   slot: CardSlot
-): Promise<
-  | { outcome: "resolved"; relationOutcome: DropRelationOutcome; relation: Relation }
-  | { outcome: "relation_failed"; error: string }
-  | { outcome: "ignored" }
-> {
+): Promise<DropTriggerResult> {
   // AGENTS §20：拖到无效目标 → 静默取消
   if (slot.type !== "budget") {
     return { outcome: "ignored" };
@@ -220,18 +251,21 @@ export async function handleBudgetCardDropOnUnitSlot(
     dataService.getRelations(),
   ]);
 
-  // 目标 Unit 卡必须真实存在且类型正确
+  // 目标卡校验边界：ownerCardId 必须对应真实存在且 type === "unit" 的目标卡
   if (!cards.some((c) => c.id === unitCardId && c.type === "unit")) {
     return { outcome: "ignored" };
   }
 
-  // D-154：revoked 预算卡业务世界中等同不存在——不给它建立关系
-  const budgetCard = cards.find((c) => c.id === budgetCardId && c.type === "budget");
+  // D-154：revoked BudgetCard 业务世界中等同不存在
+  const budgetCard = cards.find(
+    (c): c is BudgetCard => c.id === budgetCardId && c.type === "budget"
+  );
   if (!budgetCard || isBusinessRevoked(budgetCard)) {
     return { outcome: "ignored" };
   }
 
-  // P2-1 同业务键幂等：已有 active budget_assign（方向 Budget→Unit）→ 复用
+  // P2-1 同一业务键幂等复用：已有 active budget_assign → 复用
+  // Budget is the source, Unit is the target (budget -> unit per endpointRules)
   const existingAssign = relations.find(
     (r) =>
       r.active &&
@@ -240,19 +274,24 @@ export async function handleBudgetCardDropOnUnitSlot(
       r.targetId === unitCardId
   );
   if (existingAssign) {
-    // A-007 缺陷修复（2026-10-27 用户发现）：reused 路径也要触发预算分析——
-    // 重复拖入（幂等复用）时推荐应同步刷新（同 D-142 re-offer 精神），不应静默跳过
+    // 即使关系已存在，也要确保预算推荐存在（upsert 语义）
+    console.log('[DEBUG handleBudgetCardDropOnUnitSlot] Existing assign found, calling analyzeBudgetAndRecommend');
     await analyzeBudgetAndRecommend(dataService, budgetCardId, unitCardId);
     return { outcome: "resolved", relationOutcome: "reused", relation: existingAssign };
   }
+  
+  console.log('[DEBUG handleBudgetCardDropOnUnitSlot] No existing assign, creating new relation');
 
-  // 创建 budget_assign（方向 BudgetCard → UnitCard；端点校验经 createRelation）
+  // Create endpointKinds map for createRelation
   const endpointKinds = new Map<string, RelationEndpointKind>();
   for (const card of cards) {
     endpointKinds.set(card.id, card.type);
   }
+
   let relation: Relation;
   try {
+    console.log('[DEBUG handleBudgetCardDropOnUnitSlot] About to call createRelation');
+    // Budget is the source, Unit is the target (budget -> unit per endpointRules)
     relation = createRelation(
       {
         id: uuidv4(),
@@ -263,122 +302,121 @@ export async function handleBudgetCardDropOnUnitSlot(
       },
       { existingRelations: relations, endpointKinds }
     );
+    console.log('[DEBUG handleBudgetCardDropOnUnitSlot] createRelation succeeded, relation:', relation);
   } catch (error) {
+    console.log('[DEBUG handleBudgetCardDropOnUnitSlot] createRelation failed:', error);
+    return {
+      outcome: "relation_failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  console.log('[DEBUG handleBudgetCardDropOnUnitSlot] relation created:', relation);
+
+  // 持久化
+  let submission: { outcome: "persisted" | "reused"; relation: Relation };
+try {
+    console.log('[DEBUG handleBudgetCardDropOnUnitSlot] About to call submitDropAssignRelation');
+    submission = await submitDropAssignRelation(relation, dataService);
+    console.log('[DEBUG handleBudgetCardDropOnUnitSlot] submitDropAssignRelation succeeded, submission:', submission);
+  } catch (error) {
+    console.log('[DEBUG handleBudgetCardDropOnUnitSlot] submitDropAssignRelation failed:', error);
     return {
       outcome: "relation_failed",
       error: error instanceof Error ? error.message : String(error),
     };
   }
 
-  // 持久化（D-141：经 ActionSubmissionService 唯一持久化边界；内部同键 active 兜底）
-  try {
-    const submission = await submitDropAssignRelation(relation, dataService);
-    // A-007 预算推荐：budget_assign 建立后自动分析预算状态并注册信息型推荐
-    //（稳定 ID rec-budget-<budgetCardId>-<unitCardId>，同 D-142 精神幂等 upsert）
-    await analyzeBudgetAndRecommend(dataService, budgetCardId, unitCardId);
-    return {
-      outcome: "resolved",
-      relationOutcome: submission.outcome,
-      relation: submission.relation,
-    };
-  } catch (error) {
-    return {
-      outcome: "relation_failed",
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  // Budget assign 持久化成功后，触发预算推荐分析（A-007：A-007 预算域解析/推荐）
+  console.log('[DEBUG handleBudgetCardDropOnUnitSlot] Calling analyzeBudgetAndRecommend with budgetCardId:', budgetCardId, 'unitCardId:', unitCardId);
+  await analyzeBudgetAndRecommend(dataService, budgetCardId, unitCardId);
+  console.log('[DEBUG handleBudgetCardDropOnUnitSlot] analyzeBudgetAndRecommend completed');
+  return { outcome: "resolved", relationOutcome: submission.outcome, relation: submission.relation };
 }
 
 /**
- * Unit Drop → Structure 业务接线层（A-009 第一半，用户 2026-10-26 裁定）
+ * 处理 UnitCard 拖到 Canvas 空白处的拖放。
  *
- * 语义依据（Q-04 封板，无新裁定）：
- * - structure 关系 = 单元组织结构从属（D-015：V1 Unit Slot 只接受 UnitCard）；
- * - 方向 Unit→Unit（endpointRules：source=unit, target=unit）；
- * - P2-1 同业务键幂等（submitDropAssignRelation 通用按 type+source+target 判重）。
- *
- * 边界（如实记录）：
- * - **无 Resolution 触发**：与预算同理——Resolution 是工作量域机制（D-128）；
- *   单元拖入到"确认槽位合法 → 建立从属关系"为止；
- * - 单元**不做自环**（unit 不能挂到自己下面）——静默取消；
- * - AGENTS §20：无效目标（非 unit 槽 / 目标卡不存在 / revoked 卡 / 自环）静默取消。
+ * 创建新的 Canvas placement。无业务关系建立，纯 UI 操作。
+ * 如果该 UnitCard 已在 Canvas 上，则忽略（幂等）。
  */
-export async function handleUnitCardDropOnUnitSlot(
-  dataService: DataService,
+export function handleUnitCardDropOnCanvas(
   unitCardId: string,
-  slot: CardSlot
-): Promise<
-  | { outcome: "structure_resolved"; relationOutcome: DropRelationOutcome; relation: Relation }
-  | { outcome: "relation_failed"; error: string }
-  | { outcome: "ignored" }
-> {
-  if (slot.type !== "unit") {
+  x: number,
+  y: number
+): UnitCardDropResult {
+  // 这里只是返回放置信息，实际的 placement 创建由 Canvas store 处理
+  // 业务侧不需要持久化，这是纯 UI 状态
+  return { outcome: "placed", unitCardId, x, y };
+}
+
+/**
+ * 处理 WorkloadCard 拖到另一个 WorkloadCard 上的拖放（创建 workload_split 关系）。
+ *
+ * 这用于"子卡"场景：父 Workload（如"门诊人次"）拆分为多个子 Workload（各病区/医生的门诊人次）。
+ *
+ * 合法条件（全部满足才继续）：
+ * - 目标 WorkloadCard 存在且未 revoked
+ * - 被拖入的 WorkloadCard（子卡）存在且未 revoked
+ * - 两者不为同一张卡
+ *
+ * 无效目标：静默取消（AGENTS §20）——返回 { outcome: "ignored" }。
+ */
+export async function handleWorkloadCardDropOnWorkloadCard(
+  dataService: DataService,
+  childWorkloadCardId: string,
+  parentWorkloadCardId: string
+): Promise<DropTriggerResult> {
+  // AGENTS §20：拖到无效目标 → 静默取消
+  if (childWorkloadCardId === parentWorkloadCardId) {
     return { outcome: "ignored" };
   }
-  if (!canAcceptCard(slot, "unit")) {
-    return { outcome: "ignored" };
-  }
-  if (!slot.ownerCardId) {
-    return { outcome: "ignored" };
-  }
-  const targetUnitCardId = slot.ownerCardId;
 
   const [cards, relations] = await Promise.all([
     dataService.getCards(),
     dataService.getRelations(),
   ]);
 
-  // 目标单元卡必须真实存在且类型正确
-  if (!cards.some((c) => c.id === targetUnitCardId && c.type === "unit")) {
+  // 目标卡（父卡）校验
+  const parentCard = cards.find(
+    (c): c is WorkloadCard => c.id === parentWorkloadCardId && c.type === "workload"
+  );
+  if (!parentCard || isBusinessRevoked(parentCard)) {
     return { outcome: "ignored" };
   }
 
-  // D-154：revoked 单元卡业务世界中等同不存在
-  const sourceUnitCard = cards.find((c) => c.id === unitCardId && c.type === "unit");
-  if (!sourceUnitCard || isBusinessRevoked(sourceUnitCard)) {
+  // 被拖入的卡（子卡）校验
+  const childCard = cards.find(
+    (c): c is WorkloadCard => c.id === childWorkloadCardId && c.type === "workload"
+  );
+  if (!childCard || isBusinessRevoked(childCard)) {
     return { outcome: "ignored" };
   }
 
-  // 自环禁止：单元不能挂到自己下面
-  if (unitCardId === targetUnitCardId) {
-    return { outcome: "ignored" };
-  }
-
-  // P2-1 同业务键幂等：已有 active structure → 复用
-  // 方向（deriveUnitHierarchy 既有约定）：sourceId = 父单元（slot owner），targetId = 子单元（被拖入的卡）
-  const existingStructure = relations.find(
+  // P2-1 同一业务键幂等复用：已有 active workload_split → 复用
+  const existingSplit = relations.find(
     (r) =>
       r.active &&
-      r.type === "structure" &&
-      r.sourceId === targetUnitCardId &&
-      r.targetId === unitCardId
+      r.type === "workload_split" &&
+      r.sourceId === parentWorkloadCardId &&
+      r.targetId === childWorkloadCardId
   );
-  if (existingStructure) {
-    // W4 reused 路径（与 A-007 同模式）：重复拖入时也要触发映射检查——推荐应同步刷新
-    checkAndRecommendUnitSplit(unitCardId, targetUnitCardId);
-    return {
-      outcome: "structure_resolved",
-      relationOutcome: "reused",
-      relation: existingStructure,
-    };
+  if (existingSplit) {
+    return { outcome: "resolved", relationOutcome: "reused", relation: existingSplit };
   }
 
-  // 创建 structure（方向 UnitCard → UnitCard；端点校验经 createRelation）
+  // 创建 workload_split（方向 Parent Workload → Child Workload）
   const endpointKinds = new Map<string, RelationEndpointKind>();
   for (const card of cards) {
     endpointKinds.set(card.id, card.type);
   }
   let relation: Relation;
   try {
-    // 方向修正（2026-10-27 用户发现芯片不显示预置关系后核查）：
-    // 代码库约定 = deriveUnitHierarchy 的 sourceId 是父、targetId 是子
-    // （mock 数据也是这个方向：神经外科→一病区 = 神经外科的子是一病区）
     relation = createRelation(
       {
         id: uuidv4(),
-        type: "structure",
-        sourceId: targetUnitCardId,   // 父 = slot owner
-        targetId: unitCardId,         // 子 = 被拖入的卡
+        type: "workload_split",
+        sourceId: parentWorkloadCardId,
+        targetId: childWorkloadCardId,
         metadata: { origin: "drop" },
       },
       { existingRelations: relations, endpointKinds }
@@ -390,19 +428,17 @@ export async function handleUnitCardDropOnUnitSlot(
     };
   }
 
+  // 持久化（复用 submitDropAssignRelation 因为它处理同键幂等兜底）
+  let submission: { outcome: "persisted" | "reused"; relation: Relation };
   try {
-    const submission = await submitDropAssignRelation(relation, dataService);
-    // W4：structure 建立后查询"科室对应表"——如可拆分则注册推荐（推荐-确认流）
-    checkAndRecommendUnitSplit(unitCardId, targetUnitCardId);
-    return {
-      outcome: "structure_resolved",
-      relationOutcome: submission.outcome,
-      relation: submission.relation,
-    };
+    submission = await submitDropAssignRelation(relation, dataService);
   } catch (error) {
     return {
       outcome: "relation_failed",
       error: error instanceof Error ? error.message : String(error),
     };
   }
+
+  // workload_split 不触发 Resolution（拆分关系由 confirm_split 显式确认）
+  return { outcome: "resolved", relationOutcome: submission.outcome, relation: submission.relation };
 }

@@ -200,26 +200,30 @@ describe("UI 竖切片：原生拖放 handler → dropTrigger → Trigger → st
     }
     expect(first.relationOutcome).toBe("persisted");
     expect(second.relationOutcome).toBe("reused");
-    const firstId = first.trigger.recommendation.id;
-    const secondId = second.trigger.recommendation.id;
-    expect(secondId).toBe(firstId);
+    expect(first.trigger).toBeDefined();
+    expect(second.trigger).toBeDefined();
+    if (first.trigger && second.trigger) {
+      const firstId = first.trigger.recommendation.id;
+      const secondId = second.trigger.recommendation.id;
+      expect(secondId).toBe(firstId);
 
-    // 该配对 active 关系仍恰 1 条（重复 Drop 不产生重复关系）
-    const activeRows = ds.relations.filter(
-      (r) =>
-        r.active &&
-        r.type === "workload_assign" &&
-        r.sourceId === NEURO_UNIT &&
-        r.targetId === CLEAN_WORKLOAD
-    );
-    expect(activeRows).toHaveLength(1);
-    expect(ds.saveRelations).toHaveBeenCalledTimes(1);
+      // 该配对 active 关系仍恰 1 条（重复 Drop 不产生重复关系）
+      const activeRows = ds.relations.filter(
+        (r) =>
+          r.active &&
+          r.type === "workload_assign" &&
+          r.sourceId === NEURO_UNIT &&
+          r.targetId === CLEAN_WORKLOAD
+      );
+      expect(activeRows).toHaveLength(1);
+      expect(ds.saveRelations).toHaveBeenCalledTimes(1);
 
-    const recs = recommendationStore
-      .getState()
-      .getRecommendationsByKind("resolution")
-      .filter((r) => r.id === firstId);
-    expect(recs).toHaveLength(1);
+      const recs = recommendationStore
+        .getState()
+        .getRecommendationsByKind("resolution")
+        .filter((r) => r.id === firstId);
+      expect(recs).toHaveLength(1);
+    }
   });
 
 });

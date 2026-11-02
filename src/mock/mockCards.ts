@@ -2,30 +2,10 @@ import type { AnyCard, CardSlot } from "../domain/card/types";
 import { deriveAcceptedCardTypes } from "../domain/relation/relationService";
 
 export const mockSlots: CardSlot[] = [
+  // 神经外科 - 标准三槽位顺序：unit -> workload -> budget
   {
     id: "slot-unit-neurosurgery-units",
     ownerCardId: "unit-neurosurgery",
-    type: "unit",
-    enabled: true,
-    locked: false,
-    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
-    displayMode: "hand",
-    expanded: false
-  },
-  // A-009 演示链增补：一病区与主任的 unit 槽（显示预置 structure 子单元芯片）
-  {
-    id: "slot-unit-neurosurgery-ward-1-units",
-    ownerCardId: "unit-neurosurgery-ward-1",
-    type: "unit",
-    enabled: true,
-    locked: false,
-    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
-    displayMode: "hand",
-    expanded: false
-  },
-  {
-    id: "slot-unit-director-units",
-    ownerCardId: "unit-director",
     type: "unit",
     enabled: true,
     locked: false,
@@ -53,8 +33,20 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
+
+  // 神经外科一病区
   {
-    id: "slot-unit-ward-1-workloads",
+    id: "slot-unit-neurosurgery-ward-1-units",
+    ownerCardId: "unit-neurosurgery-ward-1",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-neurosurgery-ward-1-workloads",
     ownerCardId: "unit-neurosurgery-ward-1",
     type: "workload",
     enabled: true,
@@ -63,28 +55,6 @@ export const mockSlots: CardSlot[] = [
     displayMode: "stack",
     expanded: false
   },
-  {
-    id: "slot-unit-nursing-team-workloads",
-    ownerCardId: "unit-nursing-team",
-    type: "workload",
-    enabled: true,
-    locked: false,
-    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
-    displayMode: "stack",
-    expanded: false
-  },
-  {
-    id: "slot-unit-director-workloads",
-    ownerCardId: "unit-director",
-    type: "workload",
-    enabled: true,
-    locked: false,
-    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
-    displayMode: "stack",
-    expanded: false
-  },
-
-  // W2-1（2026-10-27 用户裁定 A-012 + AGENTS §8 封板规则）：所有单元卡补全三种槽
   {
     id: "slot-unit-neurosurgery-ward-1-budget",
     ownerCardId: "unit-neurosurgery-ward-1",
@@ -95,36 +65,8 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
-  {
-    id: "slot-unit-nursing-team-units",
-    ownerCardId: "unit-nursing-team",
-    type: "unit",
-    enabled: true,
-    locked: false,
-    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
-    displayMode: "hand",
-    expanded: false
-  },
-  {
-    id: "slot-unit-nursing-team-budget",
-    ownerCardId: "unit-nursing-team",
-    type: "budget",
-    enabled: true,
-    locked: false,
-    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
-    displayMode: "count",
-    expanded: false
-  },
-  {
-    id: "slot-unit-director-budget",
-    ownerCardId: "unit-director",
-    type: "budget",
-    enabled: true,
-    locked: false,
-    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
-    displayMode: "count",
-    expanded: false
-  },
+
+  // 神经外科二病区
   {
     id: "slot-unit-neurosurgery-ward-2-units",
     ownerCardId: "unit-neurosurgery-ward-2",
@@ -155,6 +97,8 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
+
+  // 介入室
   {
     id: "slot-unit-intervention-room-units",
     ownerCardId: "unit-intervention-room",
@@ -185,6 +129,8 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
+
+  // 内科
   {
     id: "slot-unit-internal-medicine-units",
     ownerCardId: "unit-internal-medicine",
@@ -215,6 +161,8 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
+
+  // 急诊科
   {
     id: "slot-unit-emergency-units",
     ownerCardId: "unit-emergency",
@@ -245,6 +193,8 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
+
+  // 王XX
   {
     id: "slot-unit-wang-xx-units",
     ownerCardId: "unit-wang-xx",
@@ -275,6 +225,8 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
+
+  // 李XX
   {
     id: "slot-unit-li-xx-units",
     ownerCardId: "unit-li-xx",
@@ -305,6 +257,70 @@ export const mockSlots: CardSlot[] = [
     displayMode: "count",
     expanded: false
   },
+
+  // 护理组
+  {
+    id: "slot-unit-nursing-team-units",
+    ownerCardId: "unit-nursing-team",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-nursing-team-workloads",
+    ownerCardId: "unit-nursing-team",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-nursing-team-budget",
+    ownerCardId: "unit-nursing-team",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  },
+
+  // 主任
+  {
+    id: "slot-unit-director-units",
+    ownerCardId: "unit-director",
+    type: "unit",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("unit"),
+    displayMode: "hand",
+    expanded: false
+  },
+  {
+    id: "slot-unit-director-workloads",
+    ownerCardId: "unit-director",
+    type: "workload",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("workload"),
+    displayMode: "stack",
+    expanded: false
+  },
+  {
+    id: "slot-unit-director-budget",
+    ownerCardId: "unit-director",
+    type: "budget",
+    enabled: true,
+    locked: false,
+    acceptedCardTypes: deriveAcceptedCardTypes("budget"),
+    displayMode: "count",
+    expanded: false
+  }
 ];
 
 export const mockCards: AnyCard[] = [
@@ -569,7 +585,7 @@ export const mockCards: AnyCard[] = [
     configurationState: "configured",
     workloadResultId: "workload-result-surgery-count",
     value: 120,
-    unit: "台次",
+    unit: "台次"
   },
   {
     id: "workload-herbal-amount",
@@ -579,7 +595,7 @@ export const mockCards: AnyCard[] = [
     configurationState: "configured",
     workloadResultId: "workload-result-herbal-amount",
     value: 360000,
-    unit: "元",
+    unit: "元"
   },
   {
     id: "budget-hospital-performance",

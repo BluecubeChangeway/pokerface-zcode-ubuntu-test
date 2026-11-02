@@ -69,7 +69,7 @@ describe("A-007 预算推荐 + 反馈联动", () => {
     await ds.saveCards([bg, targetUnit]);
 
     const dt = new MapDataTransfer();
-    onBudgetCardDragStart(dt, bg.id);
+    onBudgetCardDragStart(dt, bg.id, "");
     await onCardSlotDrop(ds, dt, budgetSlot(targetUnit.id));
 
     const rec = recommendationStore
@@ -90,10 +90,10 @@ describe("A-007 预算推荐 + 反馈联动", () => {
     await ds.saveCards([bg, targetUnit]);
 
     const dt1 = new MapDataTransfer();
-    onBudgetCardDragStart(dt1, bg.id);
+    onBudgetCardDragStart(dt1, bg.id, "");
     await onCardSlotDrop(ds, dt1, budgetSlot(targetUnit.id));
     const dt2 = new MapDataTransfer();
-    onBudgetCardDragStart(dt2, bg.id);
+    onBudgetCardDragStart(dt2, bg.id, "");
     await onCardSlotDrop(ds, dt2, budgetSlot(targetUnit.id));
 
     const recs = recommendationStore
@@ -110,7 +110,7 @@ describe("A-007 预算推荐 + 反馈联动", () => {
     await ds.saveCards([bg, targetUnit]);
     // 建立关系 + 产生推荐
     const dt = new MapDataTransfer();
-    onBudgetCardDragStart(dt, bg.id);
+    onBudgetCardDragStart(dt, bg.id, "");
     await onCardSlotDrop(ds, dt, budgetSlot(targetUnit.id));
     // 一条 accepted 历史推荐（不被触碰）
     const acceptedHistory = {
@@ -143,7 +143,7 @@ describe("A-007 预算推荐 + 反馈联动", () => {
     }]);
 
     const dt = new MapDataTransfer();
-    onBudgetCardDragStart(dt, bg.id);
+    onBudgetCardDragStart(dt, bg.id, "");
     await onCardSlotDrop(ds, dt, budgetSlot(targetUnit.id));
 
     const rec = recommendationStore

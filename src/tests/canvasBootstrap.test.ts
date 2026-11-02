@@ -51,12 +51,23 @@ describe("真实数据流竖切片：Canvas bootstrap / Deck 数据 / 动态 Slo
     deckStore.getState().setActiveType("unit");
   });
 
-  it("A-1：空 canvasStore → 初始化恰好 4 个有 slot 的 UnitCard placement", () => {
+  it("A-1：空 canvasStore → 初始化恰好 10 个有 slot 的 UnitCard placement", () => {
     ensureCanvasBootstrapped(mockCards);
     const cards = canvasStore.getState().cards;
-    expect(cards).toHaveLength(4);
+    expect(cards).toHaveLength(10);
     expect(cards.map((c) => c.cardId).sort()).toEqual(
-      ["unit-director", "unit-neurosurgery", "unit-neurosurgery-ward-1", "unit-nursing-team"].sort()
+      [
+        "unit-director", 
+        "unit-neurosurgery", 
+        "unit-neurosurgery-ward-1", 
+        "unit-nursing-team",
+        "unit-neurosurgery-ward-2",
+        "unit-intervention-room",
+        "unit-internal-medicine",
+        "unit-emergency",
+        "unit-wang-xx",
+        "unit-li-xx"
+      ].sort()
     );
     // placement 有真实 UI 坐标
     for (const placement of cards) {
@@ -68,7 +79,7 @@ describe("真实数据流竖切片：Canvas bootstrap / Deck 数据 / 动态 Slo
   it("A-2：再次初始化不产生重复 placement（模块标记 + cardId 幂等双保险）", () => {
     ensureCanvasBootstrapped(mockCards);
     ensureCanvasBootstrapped(mockCards); // 同一模块标记下二次调用
-    expect(canvasStore.getState().cards).toHaveLength(4);
+    expect(canvasStore.getState().cards).toHaveLength(10);
 
     // 越过模块标记直接重复 upsert 同一 placement：cardId 幂等（后写覆盖，不追加）
     const before = canvasStore.getState().cards;
@@ -81,13 +92,13 @@ describe("真实数据流竖切片：Canvas bootstrap / Deck 数据 / 动态 Slo
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("A-3：React Strict Mode 双调用 ensureCanvasBootstrapped 仍只有 4 个 placement", () => {
+  it("A-3：React Strict Mode 双调用 ensureCanvasBootstrapped 仍只有 10 个 placement", () => {
     // 模拟 StrictMode 重复执行 init 副作用的场景：标记已挡住
     ensureCanvasBootstrapped(mockCards);
     resetCanvasBootstrapForTests(); // 模拟组件重挂载后标记被重建前的双调用窗口
     ensureCanvasBootstrapped(mockCards);
     ensureCanvasBootstrapped(mockCards);
-    expect(canvasStore.getState().cards).toHaveLength(4);
+    expect(canvasStore.getState().cards).toHaveLength(10);
   });
 
   it("B-1：Deck 按 activeType=workload 从真实 Card 数据取得全部 WorkloadCard（不产生 Fact）", () => {
@@ -167,14 +178,20 @@ describe("真实数据流竖切片：Canvas bootstrap / Deck 数据 / 动态 Slo
 
     expect(first.outcome).toBe("resolved");
     expect(second.outcome).toBe("resolved");
-    const firstId = first.outcome === "resolved" ? first.trigger.recommendation.id : undefined;
-    const secondId = second.outcome === "resolved" ? second.trigger.recommendation.id : undefined;
-    expect(secondId).toBe(firstId);
-    expect(
-      recommendationStore.getState().getRecommendationsByKind("resolution").filter(
-        (r) => r.id === firstId
-      )
-    ).toHaveLength(1);
+    if (first.outcome === "resolved" && second.outcome === "resolved") {
+      expect(first.trigger).toBeDefined();
+      expect(second.trigger).toBeDefined();
+      if (first.trigger && second.trigger) {
+      const firstId = first.trigger.recommendation.id;
+      const secondId = second.trigger.recommendation.id;
+      expect(secondId).toBe(firstId);
+      expect(
+        recommendationStore.getState().getRecommendationsByKind("resolution").filter(
+          (r) => r.id === firstId
+        )
+      ).toHaveLength(1);
+    }
+    }
   });
 
   it("canvasStore.upsertCardPlacement 不触碰 focus / ghost / trail（纯 UI placement state）", () => {

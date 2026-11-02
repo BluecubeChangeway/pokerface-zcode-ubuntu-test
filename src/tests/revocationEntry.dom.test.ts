@@ -74,6 +74,22 @@ async function renderApp(): Promise<{ container: HTMLElement; cleanup: () => voi
     root = createRoot(container);
     root.render(createElement((await import("../app/App")).App));
   });
+  // Switch to calculation view since tests expect CalculationView
+  await act(async () => {
+    const tabs = container.querySelectorAll('button[role="tab"]');
+    console.log("Tabs found:", tabs.length);
+    for (const tab of tabs) {
+      console.log("Tab text:", tab.textContent);
+      if (tab.textContent?.includes("绩效测算")) {
+        (tab as HTMLElement).click();
+        break;
+      }
+    }
+  });
+  // Wait for animation and rendering to complete
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 500));
+  });
   return {
     container,
     cleanup: () => {

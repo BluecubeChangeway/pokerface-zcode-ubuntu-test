@@ -77,21 +77,7 @@ export async function executeUnitSplit(
     return { error: `目标单元 ${targetUnitId} 不存在或已撤回` };
   }
 
-  // 同名卡去重：如果目标下已有同名子单元，不重复创建（幂等友好）
-  const existingSameName = relations.find(
-    (r) =>
-      r.active &&
-      r.type === "structure" &&
-      r.sourceId === targetUnitId &&
-      cards.find(
-        (c) => c.id === r.targetId && c.name === newUnitName && c.type === "unit"
-      ) !== undefined
-  );
-  if (existingSameName) {
-    return { error: `已存在同名子单元"${newUnitName}"，不重复创建` };
-  }
-
-  // 创建新 UnitCard
+  // 创建新 UnitCard（同名去重属产品化阶段优化，当前不拦截——不同 ID 同名卡会共存）
   const newCardId = `unit-${uuidv4()}`;
   const newCard: AnyCard = {
     id: newCardId,

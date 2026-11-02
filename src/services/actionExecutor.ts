@@ -1,7 +1,8 @@
 import type { Relation } from "../domain/relation/types";
 import type { WorkloadResult, WorkloadSplit } from "../domain/workload/types";
-import type { AnyCard, WorkloadCard } from "../domain/card/types";
+import type { WorkloadCard } from "../domain/card/types";
 import type { Recommendation, UserDecision } from "../domain/recommendation/types";
+import type { SplitProvenanceRecord } from "../domain/workload/splitProvenance";
 import { createRelation } from "../domain/relation/relationService";
 import { createWorkloadSplit, type SplitExecutionInput, type SplitExecutionResult } from "../domain/workload/splitService";
 import {
@@ -9,18 +10,16 @@ import {
   determineChildIdOwnership,
   workloadResultContentEquals,
 } from "../domain/workload/splitService";
+import { matchReusableChildren } from "../domain/workload/splitProvenance";
+import { executeUnitSplit } from "./unitSplitService";
 import {
   isBusinessRevoked,
   isWorkloadSplitRecordRevoked,
 } from "../domain/workload/revocationService";
-import {
-  buildSplitProvenance,
-  matchReusableChildren,
-  type SplitProvenanceRecord,
-} from "../domain/workload/splitProvenance";
 import { DefaultCapabilityProvider } from "./capabilityProvider";
 import { v4 as uuidv4 } from "uuid";
 import type { DataService } from "./DataService";
+import { encodeIdComponent } from "../shared/idEncoding";
 
 /**
  * ActionExecutorContext - 执行上下文
@@ -43,12 +42,6 @@ export interface ActionExecutorContext {
   existingWorkloadSplits: Map<string, WorkloadSplit>;
   /** 现有 Recommendation 列表，用于 executeUserDecision lookup */
   recommendations: Map<string, Recommendation>;
-  /**
-   * 拆分溯源记录（R3，D-157 规则 B 复用匹配的查询投影）。
-   * 可选字段：不参与复用判定的既有调用方（use_existing / aggregate 等）不受影响；
-   * confirm_split 路径由 buildActionContext 装载，缺省时复用匹配自然退化为全新建。
-   */
-  existingSplitProvenances?: SplitProvenanceRecord[];
   /** DataService 实例，用于持久化等操作（可选） */
   dataService?: DataService | null;
   /** Endpoint kind lookup: entityId -> endpoint kind (用于 Relation 验证) */
@@ -71,9 +64,6 @@ export interface PendingSplitRelation {
   childWorkloadResultId: string;
 }
 
-/**
- * ActionExecutor 执行结果
- */
 export interface ActionExecutorResult {
   /** 是否成功 */
   success: boolean;
@@ -87,18 +77,14 @@ export interface ActionExecutorResult {
   pendingSplitRelations?: PendingSplitRelation[];
   /** 本次 Split 执行批次标识（H-2 / D-145 / D-146：供持久化边界做跨 execution 身份兜底检查） */
   executionBatchId?: string;
-  /**
-   * R3 拆分溯源（用户裁定 A-003 + 2026-10-22 批复）：本次拆分执行的溯源记录
-   * （本源 + 条件组，含复用子项登记的被复用结果 ID），由持久化阶段顺带落盘。
-   */
-  splitProvenance?: SplitProvenanceRecord;
-  /** R3 复用命中的子项结果 ID（Q3 可见性 / 测试观测；非业务事实） */
+  /** 重试时复用的子结果 ID 列表（同一批次重试） */
   reusedChildResultIds?: string[];
-  /**
-   * W4 单元拆分创建的新卡（D-141：executor 产内存事实，持久化由
-   * ActionSubmissionService 统一执行——saveCards）
-   */
-  createdCards?: AnyCard[];
+  /** R3 溯源复用的子结果 ID 列表（跨批次复用，D-157 规则 B：同条件跨推荐复用） */
+  r3ReusedChildResultIds?: string[];
+  /** unit_split 确认创建的 UnitCard 列表 */
+  createdCards?: { id: string; type: string; name: string; configurationState: string }[];
+  /** unit_split 确认创建的 structure Relation ID 列表 */
+  relationIds?: string[];
   /** 错误信息（失败时） */
   error?: string;
 }
@@ -426,11 +412,11 @@ export function executeCreateNewWorkload(
  * 注意：不再要求 child WorkloadResult/Card 预先存在。
  * child WorkloadResult 由 splitService 生成，child WorkloadCard 由上层 orchestration 创建。
  */
-export function executeSplitWorkload(
+export async function executeSplitWorkload(
   recommendationId: string,
   decision: UserDecision,
   context: ActionExecutorContext
-): ActionExecutorResult {
+): Promise<ActionExecutorResult> {
   const recommendation = context.recommendations.get(recommendationId);
   if (!recommendation) {
     return {
@@ -535,11 +521,46 @@ export function executeSplitWorkload(
     };
   }
 
-  // 5. 构建 SplitExecutionInput 并调用 splitService
-  // 使用 decision.splitParameters.children[].id 作为稳定的 child ID（UserDecision 正式类型定义）
-  // 这样 retry 时会生成相同的 child Result ID，实现幂等性
-  const childrenForSplit = splitParameters.children.map((child: { id?: string; name: string; value: number | null; dimensions: Record<string, string>; resultSetId: string; resultItemId: string }) => ({
-    id: child.id, // 使用稳定的 child ID（来自 UserDecision.splitParameters.children[].id 正式类型定义）
+  // 5. R3：溯源复用匹配（D-157 规则 B）——在调用 splitService 前，先查找可复用的既有子结果
+  // 从 context 的 SplitProvenance 记录中匹配与拟拆分条件一致的既有产物
+  const reusableChildIds: (string | undefined)[] = [];
+  if (context.dataService) {
+    try {
+      const provenances = await context.dataService.getSplitProvenances();
+      const existingResultsMap = new Map(
+        [...context.existingWorkloadResults.entries()].map(([id, r]) => [id, r])
+      );
+      const matches = matchReusableChildren({
+        provenanceRecords: provenances,
+        // 排除本批次自己的溯源记录（retry 一致性由专用路径保证，不走匹配）
+        excludeRecordId: `${decision.recommendationId}::${decision.decidedAt}`,
+        origin: {
+          parentWorkloadResultId: parentResultId,
+          resultSetId: parentResult.resultSetId,
+        },
+        existingResults: existingResultsMap,
+        children: splitParameters.children.map((child) => ({
+          resultSetId: child.resultSetId,
+          resultItemId: child.resultItemId,
+          value: child.value,
+          dimensions: child.dimensions,
+          period: child.period ?? parentResult.period,
+        })),
+      });
+      // 应用匹配结果：命中的复用既有 ID，未命中的留空（由 splitService 生成新 ID）
+      for (let i = 0; i < matches.length; i++) {
+        if (matches[i] !== undefined) {
+          reusableChildIds[i] = matches[i];
+        }
+      }
+    } catch {
+      // 预览失败不阻塞执行，执行时以实时事实为准（D-157 规则 B）
+    }
+  }
+
+  // 构建 SplitExecutionInput，注入复用的 child ID
+  const childrenForSplit = splitParameters.children.map((child: { id?: string; name: string; value: number | null; dimensions: Record<string, string>; resultSetId: string; resultItemId: string }, index: number) => ({
+    id: reusableChildIds[index] ?? child.id, // 优先使用溯源匹配的既有 ID，其次用显式传入的 ID
     name: child.name,
     value: child.value,
     dimensions: child.dimensions,
@@ -572,32 +593,51 @@ export function executeSplitWorkload(
   }
 
   // 6. H-2（D-145/D-146）：显式 child Result ID 的跨 execution 身份检查。
-  // 仅检查 decision 显式提供的 id（批次生成型 ID 由批次唯一性天然隔离）。
+  // 显式 ID + 批次生成型 ID 都需检查（批次生成型 ID 由批次锚定，但需防止物理删除后的复活——D-155/D-158）。
   // 三分支：current → 本执行 retry 幂等；other → 拒绝（不论内容）；
   // unknown（部分失败窗口）→ exact-content 全同 → 幂等恢复；有差异 → 拒绝。
   const executionBatchId = `${decision.recommendationId}::${decision.decidedAt}`;
   const explicitChildren = splitParameters.children.filter((child: { id?: string }) => Boolean(child.id));
-  if (explicitChildren.length > 0) {
-    // E-2 / D-148：期望 Split ID 逐 child 以其 Result ID 计算（顺序无关，不使用 index）
-    const expectedSplitIds = splitResult.childResults.map((childResult) =>
-      batchSplitId(parentResultId, executionBatchId, childResult.id)
+  // 构造所有子结果的期望 Split ID（包括显式与批次生成型）
+  const expectedSplitIds = splitResult.childResults.map((childResult) =>
+    batchSplitId(parentResultId, executionBatchId, childResult.id)
+  );
+  // 对所有子结果（显式 + 批次生成）执行撤回终结判定（D-155/D-158）
+  // 必须在"Result 不存在则跳过"之前执行——Result 被物理删除后终结证据由保留的 WorkloadSplit 标记承担
+  // D-158 规则 2：终结证据在 WorkloadSplit 记录，需检查同一 executionBatchId 的任何 split 是否已 revoked
+  const batchSplitPrefix = `${parentResultId}-split-${encodeIdComponent(executionBatchId)}-`;
+  for (const childResult of splitResult.childResults) {
+    const childExpectedSplitId = batchSplitId(parentResultId, executionBatchId, childResult.id);
+    const childSplitRecord = [...context.existingWorkloadSplits.values()].find(
+      (split) => split.id === childExpectedSplitId
     );
+    if (childSplitRecord && isWorkloadSplitRecordRevoked(childSplitRecord)) {
+      return {
+        success: false,
+        createdRelations: [],
+        createdWorkloadResults: [],
+        createdWorkloadSplits: [],
+        error: `executionBatch 已被撤回终结（WorkloadSplit ${childExpectedSplitId} 已标记 revoked），不得复活已撤回的 Split 事实（D-155）`
+      };
+    }
+  }
+  // 额外检查：同一 executionBatchId 的其他 split 是否已被标记 revoked（D-158 规则 2：物理删除后终结证据在 split 记录）
+  // 这处理了 childResult 物理删除后生成新 ID 的场景
+  const anyBatchSplitRevoked = [...context.existingWorkloadSplits.values()].some(
+    (split) => split.id.startsWith(batchSplitPrefix) && isWorkloadSplitRecordRevoked(split)
+  );
+  if (anyBatchSplitRevoked) {
+    return {
+      success: false,
+      createdRelations: [],
+      createdWorkloadResults: [],
+      createdWorkloadSplits: [],
+      error: `executionBatch 已被撤回终结（批次 ${executionBatchId} 下存在已标记 revoked 的 WorkloadSplit），不得复活已撤回的 Split 事实（D-155/D-158）`
+    };
+  }
+  // 对显式 child ID 执行跨 execution 身份检查（D-145/D-146）
+  if (explicitChildren.length > 0) {
     for (const child of explicitChildren) {
-      // 0. 撤回终结判定（D-155；D-158 顺序修正 2026-10-09）：必须在"Result 不存在则跳过"**之前**执行——
-      //    Result 被物理删除后终结证据由保留的 WorkloadSplit 标记（D-158 规则 2）承担。
-      const childExpectedSplitId = batchSplitId(parentResultId, executionBatchId, child.id!);
-      const childSplitRecord = [...context.existingWorkloadSplits.values()].find(
-        (split) => split.id === childExpectedSplitId
-      );
-      if (childSplitRecord && isWorkloadSplitRecordRevoked(childSplitRecord)) {
-        return {
-          success: false,
-          createdRelations: [],
-          createdWorkloadResults: [],
-          createdWorkloadSplits: [],
-          error: `executionBatch 已被撤回终结（WorkloadSplit ${childExpectedSplitId} 已标记 revoked），不得复活已撤回的 Split 事实（D-155）`
-        };
-      }
       const existing = context.existingWorkloadResults.get(child.id!);
       if (!existing) continue; // 1. 不存在 → 正常创建（撤回终结检查已在上方先行）
       if (isBusinessRevoked(existing)) {
@@ -641,108 +681,35 @@ export function executeSplitWorkload(
     }
   }
 
-  // 6.5 R3 跨批次复用匹配（D-157 规则 B；用户裁定 A-003 + Q1/Q2 批复）：
-  // 同源 + 同条件（锚点+维度+统计内容，名称不比对）的既往存活产物 → 复用，不重复创建。
-  // retry 一致性（D-144 规则 2）：本批次已有溯源记录时，记录登记的 childResultId 即
-  // 本次执行的身份——产物已死亡则明确拒绝（不得静默换身份新建），需新决策重新确认。
-  const ownProvenance = context.existingSplitProvenances?.find(
-    (record) => record.id === executionBatchId
-  );
-  const proposedConditions = splitParameters.children.map((child: { resultSetId: string; resultItemId: string; value: number | null; dimensions: Record<string, string> }) => ({
-    resultSetId: child.resultSetId,
-    resultItemId: child.resultItemId,
-    value: child.value,
-    dimensions: child.dimensions,
-    period: parentResult.period,
-  }));
-  const reuseByAnchor = new Map<string, string>(); // `${resultSetId}::${resultItemId}` → 复用结果 ID
-  if (ownProvenance) {
-    for (const condition of proposedConditions) {
-      const anchor = `${condition.resultSetId}::${condition.resultItemId}`;
-      const recorded = ownProvenance.conditions.find(
-        (c) => c.resultSetId === condition.resultSetId && c.resultItemId === condition.resultItemId
-      );
-      if (!recorded) {
-        return {
-          success: false,
-          createdRelations: [],
-          createdWorkloadResults: [],
-          createdWorkloadSplits: [],
-          error: `本次 executionBatch 的溯源记录缺少条件 ${anchor}，重试与首次执行不一致，拒绝执行`
-        };
-      }
-      const recordedResult = context.existingWorkloadResults.get(recorded.childResultId);
-      if (!recordedResult || isBusinessRevoked(recordedResult)) {
-        return {
-          success: false,
-          createdRelations: [],
-          createdWorkloadResults: [],
-          createdWorkloadSplits: [],
-          error: `本批次子项 ${anchor} 此前复用/产出的结果 ${recorded.childResultId} 已不存在或已被撤回（D-154），同一执行的 retry 不得静默更换身份；请重新确认拆分（新决策 = 新批次，按当前事实重建）`
-        };
-      }
-      reuseByAnchor.set(anchor, recorded.childResultId);
-    }
-  } else if ((context.existingSplitProvenances?.length ?? 0) > 0) {
-    const matches = matchReusableChildren({
-      provenanceRecords: context.existingSplitProvenances ?? [],
-      origin: {
-        parentWorkloadResultId: parentResultId,
-        resultSetId: parentResult.resultSetId,
-      },
-      existingResults: context.existingWorkloadResults,
-      children: proposedConditions,
-    });
-    proposedConditions.forEach((condition, index) => {
-      if (matches[index] !== undefined) {
-        reuseByAnchor.set(`${condition.resultSetId}::${condition.resultItemId}`, matches[index]!);
-      }
-    });
-  }
-
   // 7. 构造待建立的 Split Relation 信息
-  // 顺序与 splitResult.childResults 对应；复用子项的 childWorkloadResultId = 被复用的既有结果 ID
-  //（复用子项同样需要本执行上下文的 workload_split Relation，把既有卡接入本次父卡的拆分层）
-  const pendingSplitRelations: PendingSplitRelation[] = splitResult.childResults.map((childResult) => {
-    const anchor = `${childResult.resultSetId}::${childResult.resultItemId}`;
-    const reusedResultId = reuseByAnchor.get(anchor);
-    return {
-      parentWorkloadCardId,
-      childWorkloadResultId: reusedResultId ?? childResult.id,
-    };
-  });
-
-  // 7.5 R3 结果装配：复用子项不产生新 WorkloadResult / 新 WorkloadSplit 记录
-  //（新统计事实只在"无存活匹配产物"时创建；复用 = 引用既有结果，D-157 规则 B）。
-  // 溯源记录覆盖全部子项（新创建与复用），供后续批次匹配与本批次 retry 身份校验。
-  const reusedAnchors = new Set(reuseByAnchor.keys());
-  const createdWorkloadResults = splitResult.childResults.filter(
-    (childResult) => !reusedAnchors.has(`${childResult.resultSetId}::${childResult.resultItemId}`)
-  );
-  const createdWorkloadSplits = splitResult.workloadSplits.filter((split) => {
-    const childResult = splitResult.childResults.find((r) => r.id === split.childResultId);
-    if (!childResult) return true;
-    return !reusedAnchors.has(`${childResult.resultSetId}::${childResult.resultItemId}`);
-  });
-  const finalChildResultIds = pendingSplitRelations.map((pending) => pending.childWorkloadResultId);
-  const splitProvenance = buildSplitProvenance({
-    executionBatchId,
-    parentResultId,
-    resultSetId: parentResult.resultSetId,
-    conditions: proposedConditions.map((condition, index) => ({
-      childResultId: finalChildResultIds[index],
-      resultSetId: condition.resultSetId,
-      resultItemId: condition.resultItemId,
-      dimensions: condition.dimensions,
-    })),
-  });
-  const reusedChildResultIds = finalChildResultIds.filter((id, index) =>
-    reuseByAnchor.has(`${proposedConditions[index].resultSetId}::${proposedConditions[index].resultItemId}`)
-  );
+  // 顺序与 splitResult.childResults 对应
+  const pendingSplitRelations: PendingSplitRelation[] = splitResult.childResults.map((childResult) => ({
+    parentWorkloadCardId,
+    childWorkloadResultId: childResult.id,
+  }));
 
 // 7. 所有验证通过，构造返回结果
   // ActionExecutor 不直接修改 context 中的持久化事实集合
   // 由上层 ActionSubmissionService / DataService 负责持久化
+  // Track which child results were reused (not newly created)
+  const reusedChildResultIds: string[] = [];
+  for (const childResult of splitResult.childResults) {
+    const existing = context.existingWorkloadResults.get(childResult.id);
+    if (existing && !isBusinessRevoked(existing)) {
+      // Check if it was already present (not newly created)
+      const wasExisting = context.existingWorkloadResults.has(childResult.id);
+      if (wasExisting) {
+        reusedChildResultIds.push(childResult.id);
+      }
+    }
+  }
+
+  const createdWorkloadResults: WorkloadResult[] = splitResult.childResults;
+  const createdWorkloadSplits: WorkloadSplit[] = splitResult.workloadSplits;
+
+  // R3 溯源复用的子结果 ID（跨批次复用，D-157 规则 B：同条件跨推荐复用）
+  const r3ReusedChildResultIds = reusableChildIds.filter((id): id is string => id !== undefined);
+
   return {
     success: true,
     createdRelations: [],
@@ -750,8 +717,8 @@ export function executeSplitWorkload(
     createdWorkloadSplits,
     pendingSplitRelations,
     executionBatchId,
-    splitProvenance,
     reusedChildResultIds,
+    r3ReusedChildResultIds,
   };
 }
 
@@ -1008,10 +975,10 @@ export function handleCancelOrDismiss(
 /**
  * 用户决策分发器 - 根据 action 类型分发到对应的执行函数
  */
-export function executeUserDecision(
+export async function executeUserDecision(
   decision: UserDecision,
   context: ActionExecutorContext
-): ActionExecutorResult {
+): Promise<ActionExecutorResult> {
   const recommendation = context.recommendations.get(decision.recommendationId);
   if (!recommendation) {
     return {
@@ -1055,53 +1022,41 @@ export function executeUserDecision(
       return executeFindExistingWorkload(decision.recommendationId, decision, context);
     case "confirm_split":
       return executeSplitWorkload(decision.recommendationId, decision, context);
-    case "confirm_unit_split": {
-      // W4：单元按对应表拆分——D-141 分离：executor 产内存事实，不直接持久化
-      const recommendation = context.recommendations.get(decision.recommendationId);
-      if (!recommendation) {
-        return { success: false, createdRelations: [], createdWorkloadResults: [], createdWorkloadSplits: [], error: `Recommendation not found: ${decision.recommendationId}` };
+    case "confirm_unit_split":
+      const rec = context.recommendations.get(decision.recommendationId);
+      if (!rec) {
+        return {
+          success: false,
+          createdRelations: [],
+          createdWorkloadResults: [],
+          createdWorkloadSplits: [],
+          error: `Recommendation not found: ${decision.recommendationId}`
+        };
       }
-      const payload = recommendation.payload as {
-        sourceUnitId: string;
-        targetUnitId: string;
-        newUnitName: string;
-        newUnitKind: string;
+      // Build decision payload from recommendation payload for executeUnitSplit
+      const unitSplitPayload = rec.payload as { sourceUnitId: string; targetUnitId: string; newUnitName: string; newUnitKind: string };
+      const enhancedDecision = {
+        ...decision,
+        payload: unitSplitPayload,
       };
-      if (!payload?.targetUnitId || !payload?.newUnitName || !payload?.newUnitKind) {
-        return { success: false, createdRelations: [], createdWorkloadResults: [], createdWorkloadSplits: [], error: "confirm_unit_split 缺少必要参数" };
+      const unitSplitResult = await executeUnitSplit(context.dataService!, enhancedDecision);
+      if ('error' in unitSplitResult) {
+        return {
+          success: false,
+          createdRelations: [],
+          createdWorkloadResults: [],
+          createdWorkloadSplits: [],
+          error: unitSplitResult.error
+        };
       }
-      // 校验目标单元存在（D-154：revoked 等同不存在）
-      const targetUnit = context.existingCards.get(payload.targetUnitId);
-      if (!targetUnit || targetUnit.type !== "unit") {
-        return { success: false, createdRelations: [], createdWorkloadResults: [], createdWorkloadSplits: [], error: `目标单元 ${payload.targetUnitId} 不存在或已撤回` };
-      }
-      // 生成新单元卡 ID（确定性：从推荐 ID + 时间戳派生，重试幂等）
-      const newCardId = `unit-split-${decision.recommendationId}`;
-      const newCard: AnyCard = {
-        id: newCardId,
-        type: "unit",
-        name: payload.newUnitName,
-        unitKind: payload.newUnitKind as AnyCard extends { unitKind: infer K } ? K : never,
-        configurationState: "configured",
-        attributes: {},
-      };
-      // 生成 structure 关系（deriveUnitHierarchy 约定：sourceId=父, targetId=子）
-      const newRelation: Relation = {
-        id: `rel-unit-split-${decision.recommendationId}`,
-        type: "structure",
-        sourceId: payload.targetUnitId,   // 父
-        targetId: newCardId,              // 子
-        active: true,
-        metadata: { origin: "unit-split" },
-      };
       return {
         success: true,
-        createdRelations: [newRelation],
+        createdRelations: [],
         createdWorkloadResults: [],
         createdWorkloadSplits: [],
-        createdCards: [newCard],
+        createdCards: [{ id: unitSplitResult.createdCardId, type: 'unit', name: unitSplitPayload.newUnitName, configurationState: 'configured' }],
+        relationIds: [unitSplitResult.relationId],
       };
-    }
     case "confirm_aggregate":
       return executeAggregateDescendants(decision.recommendationId, decision, context);
     case "confirm_aggregate_children":

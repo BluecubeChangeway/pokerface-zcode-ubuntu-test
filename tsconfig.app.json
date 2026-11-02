@@ -16,7 +16,18 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@/components/*": ["src/components/*"],
+      "@/theme/*": ["src/theme/*"],
+      "@/hooks/*": ["src/hooks/*"],
+      "@/lib/*": ["src/lib/*"],
+      "@/i18n/*": ["src/i18n/*"],
+      "@/motion/*": ["src/motion/*"],
+      "@/providers/*": ["src/providers/*"]
+    }
   },
   "include": ["src"]
 }

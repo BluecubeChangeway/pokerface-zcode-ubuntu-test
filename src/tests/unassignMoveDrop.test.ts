@@ -196,7 +196,7 @@ describe("A-002b/A-002 拖放路由（dropInteraction）", () => {
     onWorkloadCardSlotDragStart(dt, u.workCard.id, u.unitA.id);
     const result = await onWorkloadCardSlotDrop(ds, dt, slotOf(u.unitB.id));
 
-    expect(result.outcome).toBe("moved");
+    expect(result.outcome).toBe("unit_moved");
     const relations = await ds.getRelations();
     expect(relations.find((r) => r.id === `rel-assign-a-${s}`)!.active).toBe(false);
     const newAssign = relations.find(

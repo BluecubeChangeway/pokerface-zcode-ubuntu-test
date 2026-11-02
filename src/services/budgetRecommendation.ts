@@ -30,6 +30,7 @@ export async function analyzeBudgetAndRecommend(
   budgetCardId: string,
   unitCardId: string
 ): Promise<Recommendation | undefined> {
+  console.log('[DEBUG analyzeBudgetAndRecommend] ENTRY budgetCardId:', budgetCardId, 'unitCardId:', unitCardId);
   const [cards, relations] = await Promise.all([
     dataService.getCards(),
     dataService.getRelations(),
@@ -44,6 +45,14 @@ export async function analyzeBudgetAndRecommend(
   }
 
   const summary = getBudgetSummary(budget, relations);
+  console.log('[DEBUG analyzeBudgetAndRecommend] summary:', JSON.stringify(summary));
+  console.log('[DEBUG analyzeBudgetAndRecommend] budgetCardId:', budgetCardId, 'unitCardId:', unitCardId);
+  console.log('[DEBUG analyzeBudgetAndRecommend] budget.amount:', budget.amount, 'occupied:', summary.occupied, 'total:', summary.total);
+  console.log('[DEBUG analyzeBudgetAndRecommend] relations count:', relations.length);
+  console.log('[DEBUG analyzeBudgetAndRecommend] budget.id:', budget.id);
+  const budgetOccupancyRelations = relations.filter(r => r.active && r.type === "budget_occupancy" && r.sourceId === budget.id);
+  console.log('[DEBUG analyzeBudgetAndRecommend] budget_occupancy relations:', budgetOccupancyRelations.length);
+  budgetOccupancyRelations.forEach(r => console.log('[DEBUG analyzeBudgetAndRecommend]   occupancy relation:', r.id, r.sourceId, r.targetId, r.active, r.metadata));
   const recommendationId = `rec-budget-${budgetCardId}-${unitCardId}`;
 
   // 三种状态的判定（Q-05 封板派生规则，不发明新语义）：

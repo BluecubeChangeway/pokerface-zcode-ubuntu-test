@@ -29,14 +29,23 @@ import { mockWorkloadDefinitions } from "../mock/mockWorkloadDefinitions";
 import type { DataService } from "./DataService";
 
 // 内存存储扩展（Q-09-C P0）
-let relationsStore = [...mockRelations];
-let workloadResultsStore = [...mockWorkloadResults];
+let relationsStore: Relation[] = [...mockRelations];
+let workloadResultsStore: WorkloadResult[] = [...mockWorkloadResults];
 let workloadSplitsStore: WorkloadSplit[] = [];
-let cardsStore = [...mockCards];
+let cardsStore: AnyCard[] = [...mockCards];
+let splitProvenancesStore: SplitProvenanceRecord[] = [];
 // CalculationResult 可写存储（D-154：撤回显式失效经 upsert 表达；初始为 mock 数据副本）
 let calculationResultsStore: CalculationResult[] = [...mockCalculationResults];
-// 拆分溯源存储（R3：confirm_split 持久化阶段写入；upsert by id；撤回不删除——历史记录）
-let splitProvenancesStore: SplitProvenanceRecord[] = [];
+
+/** 重置所有存储到初始状态（用于测试隔离） */
+export function resetMockDataService(): void {
+  relationsStore = [...mockRelations];
+  workloadResultsStore = [...mockWorkloadResults];
+  workloadSplitsStore = [];
+  cardsStore = [...mockCards];
+  splitProvenancesStore = [];
+  calculationResultsStore = [...mockCalculationResults];
+}
 
 export class MockDataService implements DataService {
   async getCards(): Promise<AnyCard[]> {
@@ -117,7 +126,7 @@ export class MockDataService implements DataService {
 
   async saveSplitProvenances(records: SplitProvenanceRecord[]): Promise<void> {
     for (const record of records) {
-      const existingIndex = splitProvenancesStore.findIndex((r) => r.id === record.id);
+      const existingIndex = splitProvenancesStore.findIndex(r => r.id === record.id);
       if (existingIndex >= 0) {
         splitProvenancesStore[existingIndex] = record;
       } else {

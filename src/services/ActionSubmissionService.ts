@@ -10,6 +10,7 @@ import {
   determineChildIdOwnership,
   workloadResultContentEquals,
 } from "../domain/workload/splitService";
+import { reusableContentEquals } from "../domain/workload/splitProvenance";
 import {
   isBusinessRevoked,
   isWorkloadSplitRecordRevoked,
@@ -77,8 +78,10 @@ export async function submitActionResult(
         );
       }
       const ownership = determineChildIdOwnership(existingSplits, childResult.id, expectedSplitIds);
-      if (ownership === "other") {
-        // 已明确属于其他 execution → 拒绝（不论内容）
+      // R3 溯源复用（D-157 规则 B）：跨批次复用的子结果允许"other"归属，且内容比对忽略名称（Q2）
+      const isR3Reused = result.r3ReusedChildResultIds?.includes(childResult.id) ?? false;
+      if (ownership === "other" && !isR3Reused) {
+        // 已明确属于其他 execution → 拒绝（不论内容），但 R3 复用除外
         throw new Error(
           `child WorkloadResult ${childResult.id} 已属于其他 execution，禁止跨 execution 复用（持久化边界拒绝）`
         );
@@ -86,7 +89,14 @@ export async function submitActionResult(
       // current / unknown 都必须执行 exact-content 判定（P1 修复 2026-10-05）：
       // 同一 execution identity 下不得提交另一份不同内容（D-144 规则 2）。
       // current + 全同 → 复用/幂等 upsert；unknown + 全同 → 幂等恢复（D-146）；任一差异 → 拒绝。
-      if (!workloadResultContentEquals(existing, childResult)) {
+      // R3 复用（D-157 规则 B + Q2）：内容比对忽略名称字段
+      const contentEquals = isR3Reused
+        ? reusableContentEquals(
+            { resultSetId: existing.resultSetId, resultItemId: existing.resultItemId, value: existing.value, dimensions: existing.dimensions, period: existing.period },
+            { resultSetId: childResult.resultSetId, resultItemId: childResult.resultItemId, value: childResult.value, dimensions: childResult.dimensions, period: childResult.period }
+          )
+        : workloadResultContentEquals(existing, childResult);
+      if (!contentEquals) {
         throw new Error(
           `已有 child WorkloadResult ${childResult.id} 内容与当前 execution 不一致，不允许覆盖旧统计事实（持久化边界拒绝）`
         );
@@ -105,85 +115,81 @@ export async function submitActionResult(
   const childResultIdToCardId = new Map<string, string>();
   
   if (result.pendingSplitRelations && result.pendingSplitRelations.length > 0) {
-    // 阶段 B：为每个 child WorkloadResult 确定 WorkloadCard 身份并创建缺失卡片。
-    //
-    // 身份解析顺序（R3 复用 + D-143 retry 幂等）：
-    //   a) 已有**存活**卡片引用该结果 → 复用该卡 ID（R3 Q2 批复：复用子项不建第二张卡；
-    //      second-card 用户路径仍 D-148 CASE/SEE 暂缓；新子项的命中只可能来自本批次
-    //      此前部分持久化——其卡 ID 本就是稳定 ID，与 b) 结果一致，行为不变）；
-    //   b) 否则 generateStableCardId(recommendationId, childResultId)（D-143：
-    //      retry 同 ID upsert 同一卡）。
-    const existingCardsForReuse = await dataService.getCards();
-
+    // 阶段 B：为每个 child WorkloadResult 创建 WorkloadCard
+    // 幂等性：基于 recommendationId + childWorkloadResultId 生成稳定的 Card ID
+    // 遵循 D-120：不做全局 workloadResultId 去重，同一 Result 可被多个 Card 引用
+    // Retry 时：同一 recommendationId + childWorkloadResultId 生成相同的 Card ID，复用而非新建
+    
     for (const pending of result.pendingSplitRelations) {
-      // 同一 childResultId 可能出现多条 pending（去重；沿用原逻辑）
-      if (childResultIdToCardId.has(pending.childWorkloadResultId)) {
-        continue;
+      // 找到对应的 child WorkloadResult
+      const childResult = result.createdWorkloadResults.find(r => r.id === pending.childWorkloadResultId);
+      if (!childResult) {
+        throw new Error(`Child WorkloadResult ${pending.childWorkloadResultId} not found in createdWorkloadResults`);
       }
-      const aliveExistingCard = existingCardsForReuse.find(
-        (card) =>
-          card.type === "workload" &&
-          (card as WorkloadCard).workloadResultId === pending.childWorkloadResultId &&
-          (card as any).businessStatus !== "revoked"
-      );
-      const childCardId = aliveExistingCard
-        ? aliveExistingCard.id
-        : generateStableCardId(recommendationId, pending.childWorkloadResultId);
-      childResultIdToCardId.set(pending.childWorkloadResultId, childCardId);
 
-      // 既有存活卡已承担该结果 → 复用，不新建（R3 复用子项的主路径）
-      if (aliveExistingCard) {
-        continue;
-      }
-      // 稳定 ID 对应的卡已存在（本批次此前部分持久化的同 ID 卡）→ upsert 同一对象即幂等，
-      // 重建对象再保存与跳过等价；这里保持原行为：重建并保存（内容全同，幂等）
-      const childResult = result.createdWorkloadResults.find(
-        (r) => r.id === pending.childWorkloadResultId
-      );
-      // 注意：不复制 WorkloadResult.value 作为事实源，只通过 workloadResultId 引用
-      // sourceSummary.dataObjectId 使用真实的 ResultSet 来源，不写空字符串
-      let sourceDataObjectId: string | undefined;
-      let periodForCard: WorkloadResult["period"] | undefined;
-      if (childResult) {
-        periodForCard = childResult.period;
-        if (childResult.resultSetId) {
-          const resultSets = await dataService.getResultSets();
-          const resultSet = resultSets.find((rs) => rs.id === childResult.resultSetId);
-          if (resultSet?.sourceDataObjectId) {
-            sourceDataObjectId = resultSet.sourceDataObjectId;
-          }
+      // R3 溯源复用（D-157 规则 B + Q2）：跨推荐复用时，复用既有 Card（不产生新卡）
+      // 查找已存在的引用该 childResultId 的 WorkloadCard
+      let childCardId: string;
+      const isR3Reused = result.r3ReusedChildResultIds?.includes(childResult.id) ?? false;
+      if (isR3Reused) {
+        const allCards = await dataService.getCards();
+        const existingCard = allCards.find(
+          (c) => c.type === "workload" && c.workloadResultId === childResult.id
+        );
+        if (existingCard) {
+          childCardId = existingCard.id;
+        } else {
+          // 理论上不应发生：R3 复用的结果必有对应 Card
+          childCardId = generateStableCardId(recommendationId, pending.childWorkloadResultId);
         }
       } else {
-        // R3 复用子项（引用既有结果，不在 createdWorkloadResults 中）且无存活卡：
-        // 经既有结果取来源信息（边缘场景：结果存活但卡缺失）
-        const results = await dataService.getWorkloadResults();
-        const reusedResult = results.find((r) => r.id === pending.childWorkloadResultId);
-        if (reusedResult) {
-          periodForCard = reusedResult.period;
-          if (reusedResult.resultSetId) {
+        // 普通情况：基于 recommendationId + childWorkloadResultId 生成稳定 Card ID（retry 幂等）
+        childCardId = generateStableCardId(recommendationId, pending.childWorkloadResultId);
+      }
+      
+      // 检查本次提交中是否已为该 childWorkloadResultId 创建过 Card
+      if (childResultIdToCardId.has(pending.childWorkloadResultId)) {
+        // 本次提交中已创建过该子结果的 Card，复用
+        const existingChildCardId = childResultIdToCardId.get(pending.childWorkloadResultId)!;
+      } else {
+        // 检查数据库中是否已存在该 Card（R3 复用场景）
+        const allCards = await dataService.getCards();
+        const existingCardInDb = allCards.find(
+          (c) => c.type === "workload" && c.id === childCardId
+        );
+        if (existingCardInDb) {
+          // Card 已存在，无需创建
+        } else {
+          // 创建新的 child WorkloadCard
+          // 注意：不复制 WorkloadResult.value 作为事实源，只通过 workloadResultId 引用
+          // sourceSummary.dataObjectId 使用真实的 ResultSet 来源，不写空字符串
+          let sourceDataObjectId: string | undefined;
+          if (childResult.resultSetId) {
             const resultSets = await dataService.getResultSets();
-            const resultSet = resultSets.find((rs) => rs.id === reusedResult.resultSetId);
+            const resultSet = resultSets.find(rs => rs.id === childResult.resultSetId);
             if (resultSet?.sourceDataObjectId) {
               sourceDataObjectId = resultSet.sourceDataObjectId;
             }
           }
+
+          const childCard: WorkloadCard = {
+            id: childCardId,
+            type: "workload",
+            name: childResult.name,
+            workloadResultId: childResult.id,
+            configurationState: "configured",
+            // 不复制 value：WorkloadCard 通过 workloadResultId 引用 WorkloadResult，不持有独立事实
+            sourceSummary: sourceDataObjectId ? {
+              dataObjectId: sourceDataObjectId,
+              period: childResult.period,
+            } : undefined,
+            metadata: {},
+          };
+
+          newCards.push(childCard);
         }
       }
-
-      const childCard: WorkloadCard = {
-        id: childCardId,
-        type: "workload",
-        name: childResult?.name ?? pending.childWorkloadResultId,
-        workloadResultId: pending.childWorkloadResultId,
-        configurationState: "configured",
-        // 不复制 value：WorkloadCard 通过 workloadResultId 引用 WorkloadResult，不持有独立事实
-        sourceSummary: sourceDataObjectId
-          ? { dataObjectId: sourceDataObjectId, period: periodForCard }
-          : undefined,
-        metadata: {},
-      };
-
-      newCards.push(childCard);
+      childResultIdToCardId.set(pending.childWorkloadResultId, childCardId);
     }
 
     // 保存 child WorkloadCard
@@ -297,16 +303,35 @@ export async function submitActionResult(
     await dataService.saveWorkloadSplits(result.createdWorkloadSplits);
   }
 
-  // W4 单元拆分：保存新创建的卡（D-141：executor 产内存事实，此处统一持久化）
+  // 保存 SplitProvenanceRecord（拆分溯源记录，D-157 规则 B）
+  // 一次拆分执行 = 一个批次 = 一个 provenance 记录（id = executionBatchId，包含所有条件）
+  if (result.createdWorkloadSplits.length > 0 && result.executionBatchId) {
+    // 从 createdWorkloadResults 构造完整条件信息
+    const conditions = result.createdWorkloadResults.map((childResult) => ({
+      childResultId: childResult.id,
+      resultSetId: childResult.resultSetId,
+      resultItemId: childResult.resultItemId,
+      value: childResult.value,
+      dimensions: childResult.dimensions,
+    }));
+    const provenance: SplitProvenanceRecord = {
+      id: result.executionBatchId,
+      parentWorkloadResultId: result.createdWorkloadSplits[0].parentResultId,
+      resultSetId: result.createdWorkloadResults[0].resultSetId,
+      conditions,
+      createdAt: new Date().toISOString(),
+    };
+    await dataService.saveSplitProvenances([provenance]);
+  }
+
+  // 保存 unit_split 创建的 UnitCard
   if (result.createdCards && result.createdCards.length > 0) {
     await dataService.saveCards(result.createdCards);
   }
 
-  // R3 拆分溯源落盘（查询投影：upsert by id = executionBatchId，重试幂等收敛；
-  // 撤回不删除——历史记录，后续复用匹配按产物存活状态过滤，D-154）
-  if (result.splitProvenance) {
-    await dataService.saveSplitProvenances([result.splitProvenance]);
-  }
+  // unit_split 创建的 structure Relation 已在 executor 层持久化（通过 submitDropAssignRelation）
+  // 这里只需记录 relationIds 用于追踪
+  // 无需额外操作
 }
 
 /**
@@ -343,7 +368,7 @@ export async function submitDropAssignRelation(
   const duplicate = existingRelations.find(
     (r) =>
       r.active &&
-      r.type === relation.type &&
+      r.type === "workload_assign" &&
       r.sourceId === relation.sourceId &&
       r.targetId === relation.targetId
   );
@@ -355,18 +380,17 @@ export async function submitDropAssignRelation(
 }
 
 /**
- * 移动关系持久化入口（R2 移动/解除关系；用户 2026-10-21 裁定：移动 = 解除旧关系 + 新建关系，
- * 见 AGENT/DECISIONS-AND-ASSUMPTIONS.md A-002）。
+ * 移动/解除关系的持久化提交入口（R2/A-002b，D-151）。
  *
- * 一批保存：被解除关系的软删除副本（同 ID upsert → active=false，行保留审计，
- * 与撤回的关系软删语义一致）+ 新关系（P2-1 业务键幂等：已存在同键 active 时
- * 复用既有行返回 reused，不建第二条）。
- *
- * 重试安全：同一移动重复提交收敛——软删除 upsert 幂等 + 业务键幂等；
- * 旧关系已 inactive 时再提交无变化（deactivated 为 null 时调用方不再传入）。
- *
- * 本入口不做 Relation 创建 / 端点校验（调用方经 relationService.createRelation 完成），
- * 不涉及 WorkloadResult / WorkloadCard / WorkloadSplit / Recommendation。
+ * 语义：移动操作 = 解除旧关系 + 新建/复用目标端关系，必须在同一批次提交（D-141 唯一持久化边界）。
+ * - deactivatedRelation：被解除的旧关系（active=false，软删留痕）；为 null 时仅执行新建/复用
+ * - newRelation：目标端关系（新建或复用既有同键 active 行）；metadata.origin 只作来源信息，不参与业务键
+ * - 幂等（P2-1 同一业务键：active + type + Unit sourceId + Workload targetId）：
+ *   - 新关系：已存在同键 active Relation 时复用并返回 reused
+ *   - 旧关系：若已 inactive 则直接 upsert 为 inactive（幂等软删）
+ * - 本入口不做 Relation 创建 / 端点校验（调用方经 relationService.createRelation 完成）
+ * - 本入口不涉及 WorkloadResult / WorkloadCard / WorkloadSplit / Recommendation
+ * - 失败不回滚（无事务语义），重试同一移动入口按当前事实收敛（软删 upsert + 业务键幂等）
  */
 export async function submitMoveAssignRelation(
   deactivatedRelation: Relation | null,
@@ -374,37 +398,64 @@ export async function submitMoveAssignRelation(
   dataService: DataService
 ): Promise<{ outcome: "persisted" | "reused"; relation: Relation }> {
   const existingRelations = await dataService.getRelations();
+  const relationType = newRelation.type;
+
+  // 1. 处理新关系：幂等业务键检查（P2-1）
   const duplicate = existingRelations.find(
     (r) =>
       r.active &&
-      r.type === newRelation.type &&
+      r.type === relationType &&
       r.sourceId === newRelation.sourceId &&
       r.targetId === newRelation.targetId
   );
-  const toSave: Relation[] = [];
+  if (duplicate) {
+    // 新关系已存在 → 复用，仅软删旧关系（如有）
+    if (deactivatedRelation) {
+      await dataService.saveRelations([{ ...deactivatedRelation, active: false }]);
+    }
+    return { outcome: "reused", relation: duplicate };
+  }
+
+  // 2. 准备批量保存：旧关系软删 + 新关系持久化
+  const toSave: Relation[] = [newRelation];
   if (deactivatedRelation) {
-    toSave.push(deactivatedRelation);
+    toSave.push({ ...deactivatedRelation, active: false });
   }
-  if (!duplicate) {
-    toSave.push(newRelation);
-  }
-  if (toSave.length > 0) {
-    await dataService.saveRelations(toSave);
-  }
-  return { outcome: duplicate ? "reused" : "persisted", relation: duplicate ?? newRelation };
+  await dataService.saveRelations(toSave);
+  return { outcome: "persisted", relation: newRelation };
 }
 
 /**
- * 解除关系持久化入口（R3 轮 A-002b：拖出槽外 = 解除，用户 2026-10-23 裁定）。
- * 被解除关系软删除落盘（同 ID upsert → active=false，行保留审计——与撤回的关系
- * 软删语义一致，不做物理删除）。重试安全：已 inactive 的行重复 upsert 无变化。
+ * 解除关系的持久化提交入口（R2/A-002b，D-151）。
  *
- * 本入口不做 Relation 查找/校验（调用方 moveRelationEntry.unassignWorkloadCard
- * 负责），不涉及 WorkloadResult / WorkloadCard / WorkloadSplit / Recommendation。
+ * 语义：解除操作 = 旧关系软删（active=false，软删留痕）；不涉及新关系创建。
+ * - deactivatedRelation：被解除的旧关系（active=false，软删留痕）
+ * - 本入口不做 Relation 创建 / 端点校验
+ * - 幂等（P2-1 同一业务键：active + type + Unit sourceId + Workload targetId）：
+ *   - 旧关系：若已 inactive 则直接 upsert 为 inactive（幂等软删）
+ * - 本入口不涉及 WorkloadResult / WorkloadCard / WorkloadSplit / Recommendation
+ * - 失败不回滚（无事务语义），重试同一解除入口按当前事实收敛（软删 upsert 幂等）
  */
 export async function submitUnassignRelation(
   deactivatedRelation: Relation,
   dataService: DataService
-): Promise<void> {
-  await dataService.saveRelations([deactivatedRelation]);
+): Promise<{ outcome: "unassigned"; relation: Relation }> {
+  const existingRelations = await dataService.getRelations();
+
+  // 1. 检查是否已有同键 inactive 关系（幂等软删）
+  const existingInactive = existingRelations.find(
+    (r) =>
+      !r.active &&
+      r.type === deactivatedRelation.type &&
+      r.sourceId === deactivatedRelation.sourceId &&
+      r.targetId === deactivatedRelation.targetId
+  );
+  if (existingInactive) {
+    // 已经软删过，幂等 no-op
+    return { outcome: "unassigned", relation: existingInactive };
+  }
+
+  // 2. 软删旧关系
+  await dataService.saveRelations([{ ...deactivatedRelation, active: false }]);
+  return { outcome: "unassigned", relation: { ...deactivatedRelation, active: false } };
 }

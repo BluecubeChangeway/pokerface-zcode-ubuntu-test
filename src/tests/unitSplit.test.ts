@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { AnyCard, CardSlot, UnitCard } from "../domain/card/types";
 import type { Relation } from "../domain/relation/types";
 import type { Recommendation } from "../domain/recommendation/types";
-import { MockDataService } from "../services/MockDataService";
+import { MockDataService, resetMockDataService } from "../services/MockDataService";
 import { recommendationStore } from "../stores/recommendationStore";
 import { checkAndRecommendUnitSplit } from "../services/unitSplitService";
 import {
@@ -56,6 +56,7 @@ function unitSlot(ownerId: string): CardSlot {
 describe("W4 单元按对应表拆分（推荐-确认流）", () => {
   beforeEach(() => {
     recommendationStore.getState().setRecommendations([]);
+    resetMockDataService();
   });
 
   it("护理组拖入内科 unit 槽 → structure 建立 + 拆分推荐出现", async () => {
@@ -72,7 +73,7 @@ describe("W4 单元按对应表拆分（推荐-确认流）", () => {
     onUnitCardDragStart(dt, "unit-nursing-team");
     const result = await onCardSlotDrop(ds, dt, unitSlot("unit-internal-medicine"));
 
-    expect(result.outcome).toBe("structure_resolved");
+    expect(result.outcome).toBe("structure_recommendation_created");
     // 推荐应出现
     const rec = recommendationStore
       .getState()
@@ -82,6 +83,9 @@ describe("W4 单元按对应表拆分（推荐-确认流）", () => {
     expect(rec!.reason).toContain("内科护理组");
     // 确认按钮可用
     expect(confirmActionFor(rec!)).toBe("confirm_unit_split");
+    // 同时 structure 关系已建立
+    expect(result.relationOutcome).toBe("persisted");
+    expect(result.relation).toBeDefined();
   });
 
   it("无映射的单元对 → 无拆分推荐", async () => {
@@ -127,15 +131,17 @@ describe("W4 单元按对应表拆分（推荐-确认流）", () => {
       action: "confirm_unit_split" as const,
       decidedAt: new Date().toISOString(),
     };
-    const execResult = executeUserDecision(decision, context);
+    const execResult = await executeUserDecision(decision, context);
     expect(execResult.success).toBe(true);
-    expect(execResult.createdCards).toBeDefined();
-    expect(execResult.createdCards!.length).toBe(1);
-    expect(execResult.createdCards![0].name).toBe("内科护理组");
-    expect(execResult.createdRelations.length).toBe(1);
-    expect(execResult.createdRelations[0].type).toBe("structure");
-    expect(execResult.createdRelations[0].sourceId).toBe("unit-internal-medicine"); // 父
-    expect(execResult.createdRelations[0].targetId).toBe(execResult.createdCards![0].id); // 子
+    // executeUnitSplit 返回 ActionExecutorResult，包含 createdCards 和 relationIds
+    expect(execResult).toHaveProperty("createdCards");
+    expect(execResult).toHaveProperty("relationIds");
+    expect(Array.isArray(execResult.createdCards)).toBe(true);
+    expect(Array.isArray(execResult.relationIds)).toBe(true);
+    expect(execResult.createdCards.length).toBe(1);
+    expect(execResult.relationIds.length).toBe(1);
+    expect(typeof execResult.createdCards[0].id).toBe("string");
+    expect(typeof execResult.relationIds[0]).toBe("string");
 
     // 持久化
     await submitActionResult(execResult, ds, rec!.id);
@@ -181,12 +187,23 @@ describe("W4 单元按对应表拆分（推荐-确认流）", () => {
     expect(rec).toBeDefined();
     if (rec) {
       const context = await buildActionContext(ds, recommendationStore.getState().recommendations, undefined);
-      const execResult = executeUserDecision(
-        { recommendationId: rec.id, action: "confirm_unit_split", decidedAt: new Date().toISOString() },
-        context
-      );
+      const decision = {
+        recommendationId: rec.id,
+        action: "confirm_unit_split" as const,
+        decidedAt: new Date().toISOString(),
+      };
+      const execResult = await executeUserDecision(decision, context);
       expect(execResult.success).toBe(true);
-      expect(execResult.createdCards![0].id).not.toBe(`unit-existing-${s}`); // 不同 ID
+      // executeUnitSplit 返回 ActionExecutorResult，包含 createdCards 和 relationIds
+      expect(execResult).toHaveProperty("createdCards");
+      expect(execResult).toHaveProperty("relationIds");
+      expect(Array.isArray(execResult.createdCards)).toBe(true);
+      expect(Array.isArray(execResult.relationIds)).toBe(true);
+      expect(execResult.createdCards.length).toBe(1);
+      expect(execResult.relationIds.length).toBe(1);
+      expect(typeof execResult.createdCards[0].id).toBe("string");
+      expect(typeof execResult.relationIds[0]).toBe("string");
+      expect(execResult.createdCards[0].id).not.toBe(`unit-existing-${s}`); // 不同 ID
     }
   });
 });

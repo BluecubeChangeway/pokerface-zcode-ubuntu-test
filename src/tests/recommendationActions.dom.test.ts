@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { App } from "../app/App";
+import { UIProviders } from "../app/providers/UIProviders";
 import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import { resetCanvasBootstrapForTests } from "../app/canvasBootstrap";
@@ -39,7 +40,23 @@ async function renderApp(): Promise<{ container: HTMLElement; cleanup: () => voi
   let root: Root | undefined;
   await act(async () => {
     root = createRoot(container);
-    root.render(createElement(App));
+    root.render(createElement(UIProviders, null, createElement(App)));
+  });
+  // Switch to calculation view since tests expect CalculationView
+  await act(async () => {
+    const tabs = container.querySelectorAll('button[role="tab"]');
+    console.log("Tabs found:", tabs.length);
+    for (const tab of tabs) {
+      console.log("Tab text:", tab.textContent);
+      if (tab.textContent?.includes("绩效测算")) {
+        (tab as HTMLElement).click();
+        break;
+      }
+    }
+  });
+  // Wait for animation and rendering to complete
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 500));
   });
   return {
     container,

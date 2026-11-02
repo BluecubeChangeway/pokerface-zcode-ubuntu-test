@@ -15,7 +15,7 @@ export type RecommendationKind =
   | "resolution"      // 工作量-单元匹配推荐
   | "relation"        // 关系建议
   | "card"            // 卡片推荐
-  | "budget_status"   // 预算状态推荐（A-007：Q-05 派生状态的展示接入，信息型无执行链）
+  | "budget_status"   // 预算状态推荐
   | "other";          // 其它
 
 export type RecommendationStatus =
@@ -68,10 +68,10 @@ export type UserDecisionAction =
   | "confirm_use_existing"           // 确认复用现有结果
   | "confirm_use_current"            // 确认使用当前 WorkloadResult
   | "confirm_split"                  // 确认拆分
+  | "confirm_unit_split"             // 确认单元拆分
   | "confirm_aggregate"              // 确认聚合
   | "confirm_use_existing_parent"    // 确认使用已有父级 Workload
   | "confirm_aggregate_children"     // 确认聚合子 Workload
-  | "confirm_unit_split"            // 确认单元拆分（W4：按对应表创建新单元卡并挂入槽）
   | "create_new_workload"            // 创建新 Workload
   | "create_new_relation"            // 创建新关系
   | "cancel"                         // 取消
