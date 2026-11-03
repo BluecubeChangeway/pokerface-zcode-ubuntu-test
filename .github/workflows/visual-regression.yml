@@ -33,7 +33,10 @@ jobs:
           ls -la src/stories/
       
       - name: Build Storybook
-        run: npm run build-storybook -- --loglevel verbose
+        run: |
+          NODE_OPTIONS="--max-old-space-size=4096" npm run build-storybook -- --loglevel verbose
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
       
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox webkit
