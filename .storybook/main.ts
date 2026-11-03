@@ -5,6 +5,9 @@
 
 import type { StorybookConfig } from '@storybook/react-vite';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const config: StorybookConfig = {
   stories: [
@@ -32,7 +35,7 @@ const config: StorybookConfig = {
     config.plugins = config.plugins || [];
     config.plugins.push(tailwindcss());
     
-    // 路径别名 - 使用相对路径解析，兼容 GitHub Actions 环境
+    // 路径别名 - 使用 import.meta.url 兼容 ES 模块，兼容 GitHub Actions 环境
     const srcPath = path.resolve(__dirname, '../src');
     config.resolve = config.resolve || {};
     config.resolve.alias = {
