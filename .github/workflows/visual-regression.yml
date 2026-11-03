@@ -24,8 +24,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
+      - name: Debug - check Storybook config
+        run: |
+          cat .storybook/main.cjs
+          echo "---"
+          ls -la .storybook/
+          echo "---"
+          ls -la src/stories/
+      
       - name: Build Storybook
-        run: npm run build-storybook
+        run: npm run build-storybook -- --loglevel verbose
       
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox webkit
