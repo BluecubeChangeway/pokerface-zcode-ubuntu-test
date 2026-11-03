@@ -21,12 +21,14 @@ for (const theme of THEMES) {
         await page.goto(`http://localhost:6006${component.path}`);
         await page.waitForLoadState('networkidle');
         
-        // 等待 Storybook 预览内容渲染完成
-        // 静态构建中，iframe.js 会在 #storybook-root 内渲染故事内容
-        await page.waitForFunction(() => {
-          const root = document.getElementById('storybook-root');
-          return root && root.innerHTML.trim().length > 0;
-        }, { timeout: 60000 });
+        // 等待 Storybook iframe 创建完成
+        // 静态构建中，iframe.js 会动态创建带有 data-is-storybook 属性的 iframe
+        const iframe = page.locator('iframe[data-is-storybook]').first();
+        await iframe.waitFor({ state: 'attached', timeout: 60000 });
+        
+        // 等待 iframe 内容加载完成
+        const frame = page.frameLocator('iframe[data-is-storybook]').first();
+        await frame.locator('body').waitFor({ state: 'attached', timeout: 30000 });
         
         // 额外等待确保内容完全渲染
         await page.waitForTimeout(2000);
