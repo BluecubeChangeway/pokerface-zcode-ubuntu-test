@@ -21,17 +21,12 @@ for (const theme of THEMES) {
         await page.goto(`http://localhost:6006${component.path}`);
         await page.waitForLoadState('networkidle');
         
-        // 等待 Storybook canvas 渲染完成
-        await page.locator('#storybook-root, #canvas, iframe').first().waitFor({ state: 'visible', timeout: 30000 });
+        // 等待 Storybook iframe 加载完成
+        await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 30000 });
         
-        // 尝试获取 iframe 内容
-        const iframes = page.frameLocator('iframe');
-        const iframeCount = await iframes.locator('body').count();
-        
-        if (iframeCount > 0) {
-          const iframe = iframes.first();
-          await iframe.locator('body').waitFor({ state: 'visible', timeout: 30000 });
-        }
+        // 获取 iframe 并等待其内容加载
+        const iframe = page.frameLocator('iframe').first();
+        await iframe.locator('body').waitFor({ state: 'visible', timeout: 30000 });
         
         await page.waitForTimeout(500);
         
