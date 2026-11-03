@@ -21,14 +21,14 @@ for (const theme of THEMES) {
         await page.goto(`http://localhost:6006${component.path}`);
         await page.waitForLoadState('networkidle');
         
-        // 等待 Storybook iframe 被 JavaScript 动态创建并加载完成
-        // 使用更宽松的选择器等待 iframe 出现
-        await page.waitForFunction(() => document.querySelector('iframe') !== null, { timeout: 60000 });
+        // 等待 Storybook 完成初始化 - 使用 Playwright 更健壮的定位器 API
+        // Storybook 8 在 #storybook-root 内动态创建 iframe
+        await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 60000 });
         
-        // 等待 iframe 内容加载完成 - 使用更宽松的选择器
+        // 等待 iframe 内容加载完成
         await page.waitForFunction(() => {
           const iframe = document.querySelector('iframe');
-          return iframe && iframe.contentDocument && iframe.contentDocument.body;
+          return iframe && iframe.contentDocument && iframe.contentDocument.body && iframe.contentDocument.body.innerHTML.trim().length > 0;
         }, { timeout: 30000 });
         
         // 额外等待确保内容完全渲染
