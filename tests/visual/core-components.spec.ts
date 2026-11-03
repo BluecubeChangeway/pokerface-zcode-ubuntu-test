@@ -25,9 +25,11 @@ for (const theme of THEMES) {
         // 使用更宽松的选择器等待 iframe 出现
         await page.waitForFunction(() => document.querySelector('iframe') !== null, { timeout: 60000 });
         
-        // 等待 iframe 内容加载完成
-        const iframe = page.frameLocator('iframe').first();
-        await iframe.locator('body').waitFor({ state: 'visible', timeout: 30000 });
+        // 等待 iframe 内容加载完成 - 使用更宽松的选择器
+        await page.waitForFunction(() => {
+          const iframe = document.querySelector('iframe');
+          return iframe && iframe.contentDocument && iframe.contentDocument.body;
+        }, { timeout: 30000 });
         
         // 额外等待确保内容完全渲染
         await page.waitForTimeout(1000);
