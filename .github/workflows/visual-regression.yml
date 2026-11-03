@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 jobs:
   visual-regression:
@@ -21,37 +22,58 @@ jobs:
           node-version: '22'
           cache: 'npm'
       
-      - name: Clear cache
-        run: |
-          rm -rf node_modules
-          rm -rf .storybook-static
-          rm -rf .cache
-          npm cache clean --force
-      
       - name: Install dependencies
         run: npm ci
       
-      - name: Debug - check Storybook config
-        run: |
-          cat .storybook/main.cjs
-          echo "---"
-          ls -la .storybook/
-          echo "---"
-          ls -la src/stories/
-      
-      - name: Build Storybook
-        run: |
-          NODE_OPTIONS="--max-old-space-size=6144" npm run build-storybook -- --loglevel verbose --max-workers=1
-        env:
-          NODE_OPTIONS: "--max-old-space-size=6144"
-      
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox webkit
+      
+      - name: Download Storybook from GitHub Pages
+        run: |
+          GH_PAGES_URL="https://bluecubechangeway.github.io/pokerface-zcode-ubuntu-test/"
+          echo "Downloading Storybook from $GH_PAGES_URL"
+          mkdir -p storybook-static
+          cd storybook-static
+          wget --mirror --convert-links --adjust-extension --page-requisites --no-parent \
+            --reject "index.json" \
+            --execute robots=off \
+            --timeout=30 --tries=3 \
+            "https://bluecubechangeway.github.io/pokerface-zcode-ubuntu-test/" 2>&1 | tail -20
+          # Move downloaded files to current directory
+          mv bluecubechangeway.github.io/pokerface-zcode-ubuntu-test/* . 2>/dev/null || true
+          cd ..
+      
+      - name: Start Storybook HTTP server
+        run: |
+          cd storybook-static
+          npx http-server -p 6006 -c-1 &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:6006 > /dev/null; then
+              echo "Storybook server ready"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -s http://localhost:6006 > /dev/null; then
+            echo "Server failed to start"
+            kill $SERVER_PID
+            exit 1
+          fi
       
       - name: Run visual regression tests
         run: npm run test:visual
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:6006
+      
+      - name: Kill Storybook server
+        if: always()
+        run: |
+          if [ -n "$SERVER_PID" ]; then
+            kill $SERVER_PID 2>/dev/null || true
+          fi
       
       - name: Upload visual test artifacts
         if: always()
