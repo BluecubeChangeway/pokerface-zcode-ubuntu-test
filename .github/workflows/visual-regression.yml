@@ -21,6 +21,13 @@ jobs:
           node-version: '22'
           cache: 'npm'
       
+      - name: Clear cache
+        run: |
+          rm -rf node_modules
+          rm -rf .storybook-static
+          rm -rf .cache
+          npm cache clean --force
+      
       - name: Install dependencies
         run: npm ci
       
