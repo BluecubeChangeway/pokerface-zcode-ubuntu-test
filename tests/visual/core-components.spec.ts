@@ -22,8 +22,8 @@ for (const theme of THEMES) {
         await page.waitForLoadState('networkidle');
         
         // 等待 Storybook iframe 被 JavaScript 动态创建并加载完成
-        // 等待 iframe 元素出现（最多等待 60 秒）
-        await page.waitForSelector('iframe', { state: 'attached', timeout: 60000 });
+        // 使用更宽松的选择器等待 iframe 出现
+        await page.waitForFunction(() => document.querySelector('iframe') !== null, { timeout: 60000 });
         
         // 等待 iframe 内容加载完成
         const iframe = page.frameLocator('iframe').first();
