@@ -1,6 +1,6 @@
 /**
  * Playwright 视觉回归全局 Setup
- * 启动 Storybook 服务、准备基线截图目录
+ * 验证已下载的 Storybook 静态文件、启动 HTTP 服务
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -27,12 +27,17 @@ export default async function globalSetup() {
     mkdirSync(resultsDir, { recursive: true });
   }
   
-  // 启动 Storybook 静态构建服务
-  console.log('[Visual Tests] Building Storybook...');
-  const buildResult = await runCommand('npm', ['run', 'build-storybook'], { cwd: resolve(__dirname, '../..') });
-  if (buildResult.code !== 0) {
-    throw new Error(`Storybook build failed: ${buildResult.stderr}`);
+  // 验证已下载的 Storybook 静态文件
+  const storybookStaticDir = resolve(__dirname, '../../storybook-static');
+  if (!existsSync(storybookStaticDir)) {
+    throw new Error(`Storybook static directory not found: ${storybookStaticDir}. Did the CI download step fail?`);
   }
+  
+  if (!existsSync(resolve(storybookStaticDir, 'index.html'))) {
+    throw new Error(`Storybook index.html not found in ${storybookStaticDir}`);
+  }
+  
+  console.log('[Visual Tests] Storybook static files verified.');
   
   // 检查服务器是否已经在运行
   let serverReady = false;
@@ -46,19 +51,21 @@ export default async function globalSetup() {
     // 服务器未运行
   }
   
-  // 如果服务器未运行，启动 Storybook 预览服务器
+  // 如果服务器未运行，启动 HTTP 服务器
   if (!serverReady) {
-    console.log('[Visual Tests] Starting Storybook preview server...');
-    storybookProcess = spawn('npx', ['http-server', 'storybook-static', '-p', '6006', '-c-1'], {
+    console.log('[Visual Tests] Starting Storybook HTTP server...');
+    const httpServer = spawn('npx', ['http-server', 'storybook-static', '-p', '6006', '-c-1'], {
       cwd: resolve(__dirname, '../..'),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     
-    storybookProcess.stdout?.on('data', (data) => {
+    storybookProcess = httpServer;
+    
+    httpServer.stdout?.on('data', (data) => {
       console.log(`[Storybook] ${data.toString().trim()}`);
     });
     
-    storybookProcess.stderr?.on('data', (data) => {
+    httpServer.stderr?.on('data', (data) => {
       console.error(`[Storybook Error] ${data.toString().trim()}`);
     });
     
@@ -76,25 +83,6 @@ export default async function globalSetup() {
       storybookProcess = null;
     }
   };
-}
-
-function runCommand(command: string, args: string[], options: { cwd: string }): Promise<{ code: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const proc = spawn(command, args, { cwd: options.cwd, shell: true });
-    let stdout = '';
-    let stderr = '';
-    
-    proc.stdout?.on('data', (data) => { stdout += data.toString(); });
-    proc.stderr?.on('data', (data) => { stderr += data.toString(); });
-    
-    proc.on('close', (code) => {
-      resolve({ code: code ?? 1, stdout, stderr });
-    });
-    
-    proc.on('error', (err) => {
-      resolve({ code: 1, stdout, stderr: err.message });
-    });
-  });
 }
 
 async function waitForServer(url: string, timeout: number): Promise<void> {
