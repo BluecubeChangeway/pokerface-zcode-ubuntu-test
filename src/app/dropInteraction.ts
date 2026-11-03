@@ -152,7 +152,8 @@ export async function onBudgetCardSlotDrop(
       return { outcome: "ignored" };
     }
     const targetUnitId = slot.ownerCardId;
-    if (sourceUnitId === slot.ownerCardId) {
+    if (sourceUnitId === targetUnitId) {
+      // 拖回原槽 = no-op（与 workload 语义一致）
       return { outcome: "no_op_same_unit" };
     }
     const moveResult = await moveBudgetCardAssignment(dataService, budgetCardId, sourceUnitId, slot.ownerCardId);
@@ -178,6 +179,25 @@ export function onBudgetCardSlotDragStart(
   sourceUnitId: string
 ): void {
   dataTransfer.setData(BUDGET_CARD_DRAG_TYPE, `${budgetCardId}|${sourceUnitId}`);
+}
+
+/**
+ * drop：BudgetCard 从槽拖出到 Canvas 空白/Deck 等槽外区域 → 纯解除关系（无新建）。
+ */
+export async function onBudgetCardDropOutsideSlots(
+  dataService: DataService,
+  dataTransfer: DataTransferLike
+): Promise<DropTriggerResult> {
+  const payload = dataTransfer.getData(BUDGET_CARD_DRAG_TYPE);
+  if (!payload) {
+    return { outcome: "ignored" };
+  }
+  const [budgetCardId, sourceUnitId] = payload.split("|");
+  if (!budgetCardId || !sourceUnitId) {
+    return { outcome: "ignored" };
+  }
+  const unassignResult = await unassignBudgetCard(dataService, budgetCardId, sourceUnitId);
+  return mapUnassignBudgetResultToDropTrigger(unassignResult);
 }
 
 /**

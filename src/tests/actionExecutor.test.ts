@@ -76,7 +76,7 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
     };
   }
 
-  it("recommendation target = A, decision target = B: duplicate check must target B", () => {
+  it("recommendation target = A, decision target = B: duplicate check must target B", async () => {
     const context = buildContext();
     
     // Add a recommendation that points to workload-internal-outpatient (A)
@@ -99,14 +99,14 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
 
     expect(result.success).toBe(true);
     expect(result.createdRelations[0].targetId).toBe("workload-neurosurgery-outpatient"); // Created for B
     // Duplicate check should have been against B, not A
   });
 
-  it("B already has workload_assign: execution must fail, not create duplicate Relation", () => {
+  it("B already has workload_assign: execution must fail, not create duplicate Relation", async () => {
     const context = buildContext();
     
     // Pre-create a workload_assign for B
@@ -137,7 +137,7 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
 
     // Q-09-C P2-1 裁定 B：同业务键已存在 active workload_assign -> 复用而非失败
     expect(result.success).toBe(true);
@@ -145,7 +145,7 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
     expect(result.createdRelations[0].id).toBe("existing-rel-1"); // 复用已有 Relation，不创建第二条
   });
 
-  it("B does not have workload_assign: execution succeeds, createdRelations[0].targetId === B", () => {
+  it("B does not have workload_assign: execution succeeds, createdRelations[0].targetId === B", async () => {
     const context = buildContext();
     
     const recommendation = {
@@ -166,13 +166,13 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
 
     expect(result.success).toBe(true);
     expect(result.createdRelations[0].targetId).toBe("workload-neurosurgery-outpatient"); // Created for B
   });
 
-  it("recommendation target = A, decision does not provide target: uses A", () => {
+  it("recommendation target = A, decision does not provide target: uses A", async () => {
     const context = buildContext();
     
     const recommendation = {
@@ -193,13 +193,13 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
 
     expect(result.success).toBe(true);
     expect(result.createdRelations[0].targetId).toBe("workload-internal-outpatient"); // Falls back to A
   });
 
-  it("confirm_use_current + useCurrent=true: uses context.workloadCard.id and checks duplicate correctly", () => {
+  it("confirm_use_current + useCurrent=true: uses context.workloadCard.id and checks duplicate correctly", async () => {
     const context = buildContext();
     // Set context.workloadCard to workload-neurosurgery-outpatient
     context.workloadCard = { id: "workload-neurosurgery-outpatient", type: "workload", name: "神经外科门诊人次", workloadResultId: "workload-result-neurosurgery-outpatient" };
@@ -222,13 +222,13 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
 
     expect(result.success).toBe(true);
     expect(result.createdRelations[0].targetId).toBe("workload-neurosurgery-outpatient"); // Uses current
   });
 
-  it("confirm_use_current + useCurrent=true with existing duplicate on current target: fails", () => {
+  it("confirm_use_current + useCurrent=true with existing duplicate on current target: fails", async () => {
     const context = buildContext();
     context.workloadCard = { id: "workload-neurosurgery-outpatient", type: "workload", name: "神经外科门诊人次", workloadResultId: "workload-result-neurosurgery-outpatient" };
 
@@ -260,7 +260,7 @@ describe("executeUseExistingResult - duplicate check consistency (P1 fix)", () =
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
 
     // Q-09-C P2-1 裁定 B：同业务键已存在 active workload_assign -> 复用而非失败
     expect(result.success).toBe(true);
@@ -496,7 +496,7 @@ describe("P1-4: confirm_use_current behavior", () => {
     };
   }
 
-  it("confirm_use_current + useCurrent=false -> explicit failure (no fallback)", () => {
+  it("confirm_use_current + useCurrent=false -> explicit failure (no fallback)", async () => {
     const context = buildBaseContext();
     context.workloadCard = { id: "workload-neurosurgery-outpatient", type: "workload", name: "神经外科门诊人次", workloadResultId: "workload-result-neurosurgery-outpatient" };
 
@@ -518,12 +518,12 @@ describe("P1-4: confirm_use_current behavior", () => {
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
     expect(result.success).toBe(false);
     expect(result.error).toContain("confirm_use_current requires useCurrent=true");
   });
 
-  it("confirm_use_current + missing workloadCard -> explicit failure", () => {
+  it("confirm_use_current + missing workloadCard -> explicit failure", async () => {
     const context = buildBaseContext();
     // 不设置 workloadCard
 
@@ -545,12 +545,12 @@ describe("P1-4: confirm_use_current behavior", () => {
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
     expect(result.success).toBe(false);
     expect(result.error).toContain("confirm_use_current requires context.workloadCard");
   });
 
-  it("confirm_use_current + useCurrent=true + valid workloadCard -> succeeds", () => {
+  it("confirm_use_current + useCurrent=true + valid workloadCard -> succeeds", async () => {
     const context = buildBaseContext();
     context.workloadCard = { id: "workload-neurosurgery-outpatient", type: "workload", name: "神经外科门诊人次", workloadResultId: "workload-result-neurosurgery-outpatient" };
 
@@ -572,12 +572,12 @@ describe("P1-4: confirm_use_current behavior", () => {
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
     expect(result.success).toBe(true);
     expect(result.createdRelations[0].targetId).toBe("workload-neurosurgery-outpatient");
   });
 
-  it("confirm_use_current + useCurrent=true + duplicate on current target -> fails", () => {
+  it("confirm_use_current + useCurrent=true + duplicate on current target -> fails", async () => {
     const context = buildBaseContext();
     context.workloadCard = { id: "workload-neurosurgery-outpatient", type: "workload", name: "神经外科门诊人次", workloadResultId: "workload-result-neurosurgery-outpatient" };
 
@@ -609,7 +609,7 @@ describe("P1-4: confirm_use_current behavior", () => {
       decidedAt: new Date().toISOString(),
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
     // Q-09-C P2-1 裁定 B：同业务键已存在 active workload_assign -> 复用而非失败
     expect(result.success).toBe(true);
     expect(result.createdRelations).toHaveLength(1);
@@ -1524,14 +1524,14 @@ describe("Q-09-C 裁定 A / 裁定②：splitParameters 契约与批次域 Workl
     };
   }
 
-  it("裁定 A：confirm_split 缺少 splitParameters → 明确失败，不读取 Recommendation.splitPlan 执行", () => {
+  it("裁定 A：confirm_split 缺少 splitParameters → 明确失败，不读取 Recommendation.splitPlan 执行", async () => {
     const decision = {
       recommendationId: "rec-advisory-only",
       action: "confirm_split" as const,
       decidedAt: new Date().toISOString(),
       // 无 splitParameters —— payload.splitPlan 仅为建议，不得作为执行参数
     };
-    const result = executeUserDecision(decision, buildSplitContext("rec-advisory-only"));
+    const result = await executeUserDecision(decision, buildSplitContext("rec-advisory-only"));
 
     expect(result.success).toBe(false);
     // 可诊断错误：指明缺失项 + payload 仅为建议
@@ -1543,7 +1543,7 @@ describe("Q-09-C 裁定 A / 裁定②：splitParameters 契约与批次域 Workl
     expect(result.createdRelations).toHaveLength(0);
   });
 
-  it("裁定 A：用户明确提供的 splitParameters 按用户参数执行（用户值优先于推荐值）", () => {
+  it("裁定 A：用户明确提供的 splitParameters 按用户参数执行（用户值优先于推荐值）", async () => {
     const decision = {
       recommendationId: "rec-user-params",
       action: "confirm_split" as const,
@@ -1561,7 +1561,7 @@ describe("Q-09-C 裁定 A / 裁定②：splitParameters 契约与批次域 Workl
         splitType: "partial" as const,
       },
     };
-    const result = executeUserDecision(decision, buildSplitContext("rec-user-params"));
+    const result = await executeUserDecision(decision, buildSplitContext("rec-user-params"));
 
     expect(result.success).toBe(true);
     expect(result.createdWorkloadResults).toHaveLength(1);
@@ -1570,7 +1570,7 @@ describe("Q-09-C 裁定 A / 裁定②：splitParameters 契约与批次域 Workl
     expect(result.createdWorkloadResults[0].id).toBe("wr-user-child-a");
   });
 
-  it("裁定②：同一 UserDecision 执行两次（retry）→ WorkloadSplit ID 与 child ID 完全相同", () => {
+  it("裁定②：同一 UserDecision 执行两次（retry）→ WorkloadSplit ID 与 child ID 完全相同", async () => {
     const decision = {
       recommendationId: "rec-same-decision",
       action: "confirm_split" as const,
@@ -1599,8 +1599,8 @@ describe("Q-09-C 裁定 A / 裁定②：splitParameters 契约与批次域 Workl
       },
     };
     const context = buildSplitContext("rec-same-decision");
-    const result1 = executeUserDecision(decision, context);
-    const result2 = executeUserDecision(decision, context);
+    const result1 = await executeUserDecision(decision, context);
+    const result2 = await executeUserDecision(decision, context);
 
     expect(result1.success).toBe(true);
     expect(result2.success).toBe(true);
@@ -1650,8 +1650,8 @@ describe("Q-09-C 裁定 A / 裁定②：splitParameters 契约与批次域 Workl
         splitType: "partial" as const,
       },
     };
-    const resultA = executeUserDecision(decisionA, buildSplitContext("rec-batch-a"));
-    const resultB = executeUserDecision(decisionB, buildSplitContext("rec-batch-b"));
+    const resultA = await executeUserDecision(decisionA, buildSplitContext("rec-batch-a"));
+    const resultB = await executeUserDecision(decisionB, buildSplitContext("rec-batch-b"));
     expect(resultA.success).toBe(true);
     expect(resultB.success).toBe(true);
 
@@ -1675,7 +1675,7 @@ describe("Q-09-C 裁定 A / 裁定②：splitParameters 契约与批次域 Workl
 });
 
 describe("UserDecisionAction 契约（P2-5 修复：create_new_relation 预留动作）", () => {
-  it("create_new_relation → Not implemented 明确失败、零事实、零 DataService 写入", () => {
+  it("create_new_relation → Not implemented 明确失败、零事实、零 DataService 写入", async () => {
     const saveRelations = vi.fn();
     const saveWorkloadResults = vi.fn();
     const saveWorkloadSplits = vi.fn();
@@ -1703,7 +1703,7 @@ describe("UserDecisionAction 契约（P2-5 修复：create_new_relation 预留�
       dataService: { saveRelations, saveWorkloadResults, saveWorkloadSplits, saveCards } as unknown as DataService,
     };
 
-    const result = executeUserDecision(decision, context);
+    const result = await executeUserDecision(decision, context);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Not implemented: create_new_relation");

@@ -81,6 +81,9 @@ export interface SelectProps<T = string> {
   className?: string;
 }
 
+// Non-generic type for forwardRef compatibility with react-docgen
+type SelectPropsString = SelectProps<string>;
+
 export interface SelectTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children?: React.ReactNode;
 }
@@ -122,7 +125,8 @@ function flattenOptions<T>(options: (SelectOption<T> | SelectGroup<T>)[]): { opt
 // Select 组件
 // ============================================
 
-const Select = forwardRef<HTMLButtonElement, SelectProps>((props, ref) => {
+// Use type assertion to avoid react-docgen parsing issues with generic types
+const Select = forwardRef((props: SelectPropsString, ref: React.Ref<HTMLButtonElement>) => {
   const {
     options = [],
     value,
@@ -271,10 +275,11 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>((props, ref) => {
               {searchQuery || filter ? (
                 <div className="relative mb-1">
                   <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <SelectPrimitive.SearchInput
+                  <input
+                    type="text"
                     placeholder={searchPlaceholder}
                     value={searchQuery}
-                    onValueChange={setSearchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm pl-8 outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </div>
@@ -285,38 +290,77 @@ const Select = forwardRef<HTMLButtonElement, SelectProps>((props, ref) => {
                   {searchQuery ? noResultsMessage : emptyMessage}
                 </div>
               ) : (
-                filteredOptions.map(({ option, group }, index) => (
-                  <React.Fragment key={`${option.value}-${index}`}>
-                    {group && index === 0 && (
-                      <SelectPrimitive.Group>
-                        <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                          {group}
-                        </SelectPrimitive.Label>
-                      </SelectPrimitive.Group>
-                    )}
-                    <SelectPrimitive.Item
-                      value={option.value}
-                      disabled={option.disabled}
-                      className={cn(
-                        'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none',
-                        'focus:bg-accent focus:text-accent-foreground',
-                        'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
-                        'data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground',
-                        option.disabled && 'cursor-not-allowed'
-                      )}
-                    >
-                      <SelectPrimitive.ItemText className="flex-1 truncate">
-                        {renderOption ? renderOption(option, false) : option.label}
-                      </SelectPrimitive.ItemText>
-                      <SelectPrimitive.ItemIndicator>
-                        <Check className="h-4 w-4" />
-                      </SelectPrimitive.ItemIndicator>
-                    </SelectPrimitive.Item>
-                    {group && index === filteredOptions.length - 1 && (
-                      </SelectPrimitive.Group>
-                    )}
-                  </React.Fragment>
-                ))
+                <>
+                  {(() => {
+                    // Group options by group
+                    const grouped = new Map<string | undefined, { option: SelectOption<T>; group?: string }[]>();
+                    for (const item of filteredOptions) {
+                      const key = item.group;
+                      if (!grouped.has(key)) {
+                        grouped.set(key, []);
+                      }
+                      grouped.get(key)!.push(item);
+                    }
+                    
+                    return Array.from(grouped.entries()).map(([group, items]) => {
+                      if (group) {
+                        return (
+                          <SelectPrimitive.Group key={group}>
+                            <SelectPrimitive.Label className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                              {group}
+                            </SelectPrimitive.Label>
+                            {items.map(({ option }, idx) => (
+                              <SelectPrimitive.Item
+                                key={`${option.value}-${idx}`}
+                                value={option.value}
+                                disabled={option.disabled}
+                                className={cn(
+                                  'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none',
+                                  'focus:bg-accent focus:text-accent-foreground',
+                                  'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+                                  'data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground',
+                                  option.disabled && 'cursor-not-allowed'
+                                )}
+                              >
+                                <SelectPrimitive.ItemText className="flex-1 truncate">
+                                  {renderOption ? renderOption(option, false) : option.label}
+                                </SelectPrimitive.ItemText>
+                                <SelectPrimitive.ItemIndicator>
+                                  <Check className="h-4 w-4" />
+                                </SelectPrimitive.ItemIndicator>
+                              </SelectPrimitive.Item>
+                            ))}
+                          </SelectPrimitive.Group>
+                        );
+                      }
+                      return (
+                        <React.Fragment key="ungrouped">
+                          {items.map(({ option }, idx) => (
+                            <SelectPrimitive.Item
+                              key={`${option.value}-${idx}`}
+                              value={option.value}
+                              disabled={option.disabled}
+                              className={cn(
+                                'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none',
+                                'focus:bg-accent focus:text-accent-foreground',
+                                'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+                                'data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground',
+                                option.disabled && 'cursor-not-allowed'
+                              )}
+                            >
+                              <SelectPrimitive.ItemText className="flex-1 truncate">
+                                {renderOption ? renderOption(option, false) : option.label}
+                              </SelectPrimitive.ItemText>
+                              <SelectPrimitive.ItemIndicator>
+                                <Check className="h-4 w-4" />
+                              </SelectPrimitive.ItemIndicator>
+                            </SelectPrimitive.Item>
+                          ))}
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
+                </>
               )}
             </SelectPrimitive.Viewport>
             <SelectPrimitive.ScrollUpButton className="flex cursor-default items-center justify-center py-1" asChild>

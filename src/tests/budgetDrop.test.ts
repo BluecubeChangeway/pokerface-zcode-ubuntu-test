@@ -10,6 +10,7 @@ import {
   BUDGET_CARD_DRAG_TYPE,
   onBudgetCardDragStart,
   onBudgetCardSlotDrop,
+  onBudgetCardDropOutsideSlots,
   onCardDropOutsideSlots,
   onCardSlotDrop,
   type DataTransferLike,
@@ -523,7 +524,7 @@ describe("U-UI-13 预算卡拖放", () => {
           // 拖出槽外 = 解除 unitB 上的关系
           const dtOut = new MapDataTransfer();
           onBudgetCardDragStart(dtOut, u.budget.id, u.unitB.id);
-          const out = await onBudgetCardSlotDrop(ds, dtOut, budgetSlotOf(u.unitB.id));
+          const out = await onBudgetCardDropOutsideSlots(ds, dtOut);
           const after = await ds.getRelations();
           expect(
             after.filter(

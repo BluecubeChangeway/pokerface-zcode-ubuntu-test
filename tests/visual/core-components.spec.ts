@@ -16,6 +16,11 @@ const COMPONENTS = [
   { name: 'Button-Danger', path: '/iframe.html?args=&id=ui-button--danger&viewMode=story' },
   { name: 'Button-Ghost', path: '/iframe.html?args=&id=ui-button--ghost&viewMode=story' },
   { name: 'Card-Default', path: '/iframe.html?args=&id=ui-card--default&viewMode=story' },
+  { name: 'Select-Default', path: '/iframe.html?args=&id=ui-select--default&viewMode=story' },
+  { name: 'Tabs-Default', path: '/iframe.html?args=&id=ui-tabs--default&viewMode=story' },
+  { name: 'Switch-Default', path: '/iframe.html?args=&id=ui-switch--default&viewMode=story' },
+  { name: 'Input-Default', path: '/iframe.html?args=&id=ui-input--default&viewMode=story' },
+  { name: 'Tooltip-Default', path: '/iframe.html?args=&id=ui-tooltip--default&viewMode=story' },
 ];
 
 const THEMES = ['light', 'dark'];

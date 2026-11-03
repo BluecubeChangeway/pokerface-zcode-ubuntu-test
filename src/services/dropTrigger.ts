@@ -277,7 +277,7 @@ export async function handleBudgetCardDropOnUnitSlot(
     // 即使关系已存在，也要确保预算推荐存在（upsert 语义）
     console.log('[DEBUG handleBudgetCardDropOnUnitSlot] Existing assign found, calling analyzeBudgetAndRecommend');
     await analyzeBudgetAndRecommend(dataService, budgetCardId, unitCardId);
-    return { outcome: "resolved", relationOutcome: "reused", relation: existingAssign };
+    return { outcome: "budget_resolved", relationOutcome: "reused", relation: existingAssign };
   }
   
   console.log('[DEBUG handleBudgetCardDropOnUnitSlot] No existing assign, creating new relation');
@@ -329,8 +329,8 @@ try {
   // Budget assign 持久化成功后，触发预算推荐分析（A-007：A-007 预算域解析/推荐）
   console.log('[DEBUG handleBudgetCardDropOnUnitSlot] Calling analyzeBudgetAndRecommend with budgetCardId:', budgetCardId, 'unitCardId:', unitCardId);
   await analyzeBudgetAndRecommend(dataService, budgetCardId, unitCardId);
-  console.log('[DEBUG handleBudgetCardDropOnUnitSlot] analyzeBudgetAndRecommend completed');
-  return { outcome: "resolved", relationOutcome: submission.outcome, relation: submission.relation };
+  console.log('[DEBUG handleBudgetAndRecommend] analyzeBudgetAndRecommend completed');
+  return { outcome: "budget_resolved", relationOutcome: submission.outcome, relation: submission.relation };
 }
 
 /**
