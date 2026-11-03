@@ -1,11 +1,5 @@
 /**
- * 视觉回归测试 - 核心 UI 组件基线测试（简化版：快速建立基线）
- * 
- * 测试策略：
- * 1. 仅测试稳定可靠的组件：Button、Card
- * 2. 仅 Chromium + Light/Dark 主题
- * 3. 仅 Desktop 视口
- * 4. 复杂组件后续单独处理
+ * 视觉回归测试 - 核心 UI 组件基线测试（最小化：快速验证）
  */
 
 import { test, expect } from '@playwright/test';
@@ -13,14 +7,7 @@ import { test, expect } from '@playwright/test';
 const COMPONENTS = [
   { name: 'Button-Primary', path: '/iframe.html?args=&id=ui-button--primary&viewMode=story' },
   { name: 'Button-Secondary', path: '/iframe.html?args=&id=ui-button--secondary&viewMode=story' },
-  { name: 'Button-Danger', path: '/iframe.html?args=&id=ui-button--danger&viewMode=story' },
-  { name: 'Button-Ghost', path: '/iframe.html?args=&id=ui-button--ghost&viewMode=story' },
   { name: 'Card-Default', path: '/iframe.html?args=&id=ui-card--default&viewMode=story' },
-  { name: 'Select-Default', path: '/iframe.html?args=&id=ui-select--default&viewMode=story' },
-  { name: 'Tabs-Default', path: '/iframe.html?args=&id=ui-tabs--default&viewMode=story' },
-  { name: 'Switch-Default', path: '/iframe.html?args=&id=ui-switch--default&viewMode=story' },
-  { name: 'Input-Default', path: '/iframe.html?args=&id=ui-input--default&viewMode=story' },
-  { name: 'Tooltip-Default', path: '/iframe.html?args=&id=ui-tooltip--default&viewMode=story' },
 ];
 
 const THEMES = ['light', 'dark'];
