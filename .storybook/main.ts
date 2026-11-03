@@ -4,6 +4,7 @@
  */
 
 import type { StorybookConfig } from '@storybook/react-vite';
+import path from 'path';
 
 const config: StorybookConfig = {
   stories: [
@@ -31,18 +32,19 @@ const config: StorybookConfig = {
     config.plugins = config.plugins || [];
     config.plugins.push(tailwindcss());
     
-    // 路径别名
+    // 路径别名 - 使用相对路径解析，兼容 GitHub Actions 环境
+    const srcPath = path.resolve(__dirname, '../src');
     config.resolve = config.resolve || {};
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': '/src',
-      '@/components': '/src/components',
-      '@/theme': '/src/theme',
-      '@/hooks': '/src/hooks',
-      '@/lib': '/src/lib',
-      '@/i18n': '/src/i18n',
-      '@/motion': '/src/motion',
-      '@/providers': '/src/providers',
+      '@': srcPath,
+      '@/components': path.join(srcPath, 'components'),
+      '@/theme': path.join(srcPath, 'theme'),
+      '@/hooks': path.join(srcPath, 'hooks'),
+      '@/lib': path.join(srcPath, 'lib'),
+      '@/i18n': path.join(srcPath, 'i18n'),
+      '@/motion': path.join(srcPath, 'motion'),
+      '@/providers': path.join(srcPath, 'providers'),
     };
     
     return config;
