@@ -21,24 +21,15 @@ for (const theme of THEMES) {
         await page.goto(`http://localhost:6006${component.path}`);
         await page.waitForLoadState('networkidle');
         
-        // 等待 Storybook 故事内容渲染完成
-        // 静态构建中，iframe.js 会在 #storybook-root 内渲染故事内容
-        // 也可能创建 iframe[data-is-storybook]
+        // 等待 Storybook 静态构建渲染完成
+        // 静态构建直接将故事内容渲染到 #storybook-root，无 iframe
         await page.waitForFunction(() => {
           const root = document.getElementById('storybook-root');
-          // 检查 #storybook-root 是否有内容，或者是否创建了 iframe
-          if (root && root.innerHTML.trim().length > 0) {
-            return true;
-          }
-          const iframe = document.querySelector('iframe[data-is-storybook]');
-          if (iframe) {
-            return true;
-          }
-          return false;
+          return root && root.innerHTML.trim().length > 0;
         }, { timeout: 60000 });
         
-        // 额外等待确保内容完全渲染
-        await page.waitForTimeout(2000);
+        // 额外等待确保内容完全渲染（CSS、字体等）
+        await page.waitForTimeout(3000);
         
         await expect(page).toHaveScreenshot(`${component.name}-${theme}.png`, {
           fullPage: false,
