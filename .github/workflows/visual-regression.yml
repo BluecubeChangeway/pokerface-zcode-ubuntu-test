@@ -26,22 +26,15 @@ jobs:
         run: npm ci
       
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install --with-deps chromium
       
-      - name: Download Storybook from GitHub Pages
-        run: |
-          GH_PAGES_URL="https://bluecubechangeway.github.io/pokerface-zcode-ubuntu-test/"
-          echo "Downloading Storybook from $GH_PAGES_URL"
-          mkdir -p storybook-static
-          cd storybook-static
-          wget --mirror --convert-links --adjust-extension --page-requisites --no-parent \
-            --reject "index.json" \
-            --execute robots=off \
-            --timeout=30 --tries=3 \
-            "https://bluecubechangeway.github.io/pokerface-zcode-ubuntu-test/" 2>&1 | tail -20
-          # Move downloaded files to current directory
-          mv bluecubechangeway.github.io/pokerface-zcode-ubuntu-test/* . 2>/dev/null || true
-          cd ..
+      - name: Create public directory for Storybook
+        run: mkdir -p public
+      
+      - name: Build Storybook locally
+        run: npm run build-storybook
+        env:
+          NODE_OPTIONS: "--max-old-space-size=6144"
       
       - name: Start Storybook HTTP server
         run: |
