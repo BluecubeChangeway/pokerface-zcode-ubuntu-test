@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
+    inputs:
+      update_snapshots:
+        description: 'Update baseline snapshots'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   visual-regression:
@@ -57,7 +63,7 @@ jobs:
           fi
       
       - name: Run visual regression tests
-        run: npm run test:visual
+        run: npm run test:visual${{ github.event.inputs.update_snapshots && ' --update-snapshots' || '' }}
         env:
           PLAYWRIGHT_BASE_URL: http://localhost:6006
       
