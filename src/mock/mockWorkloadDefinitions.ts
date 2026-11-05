@@ -10,8 +10,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
       { field: "departmentId", alias: "科室", order: 1 },
       { field: "doctorId", alias: "医生", order: 2 }
     ],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "visitCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "visitDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-neurosurgery-outpatient",
@@ -22,8 +27,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
       { field: "departmentId", operator: "=", value: "unit-neurosurgery" }
     ],
     dimensions: [{ field: "doctorId", alias: "医生", order: 1 }],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "visitCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "visitDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-internal-outpatient",
@@ -34,8 +44,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
       { field: "departmentId", operator: "=", value: "unit-internal-medicine" }
     ],
     dimensions: [{ field: "doctorId", alias: "医生", order: 1 }],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "visitCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "visitDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-orthopedics-outpatient",
@@ -46,8 +61,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
       { field: "departmentName", operator: "contains", value: "骨科" }
     ],
     dimensions: [{ field: "departmentId", alias: "科室", order: 1 }],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "visitCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "visitDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-wang-outpatient",
@@ -58,8 +78,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
       { field: "doctorId", operator: "=", value: "unit-wang-xx" }
     ],
     dimensions: [{ field: "departmentId", alias: "实际发生科室", order: 1 }],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "visitCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "visitDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-li-outpatient",
@@ -70,8 +95,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
       { field: "doctorId", operator: "=", value: "unit-li-xx" }
     ],
     dimensions: [{ field: "departmentId", alias: "实际发生科室", order: 1 }],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "visitCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "visitDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-discharge-visits",
@@ -83,8 +113,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
       { field: "nursingTeamId", alias: "护理组", order: 2 },
       { field: "directorId", alias: "主任", order: 3 }
     ],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "dischargeCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "dischargeDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-disease-weight",
@@ -92,11 +127,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
     sourceDataObjectId: "data-object-diagnosis",
     conditions: [],
     dimensions: [{ field: "departmentId", alias: "科室", order: 1 }],
-    calculation: {
-      type: "weighted",
-      expression: "averageCost / hospitalAverageCost"
-    },
-    version: 1
+    statisticField: "cost",
+    aggregationMethod: "weighted",
+    calculationMethod: "weighted",
+    timeField: "costDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-surgery-count",
@@ -104,8 +141,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
     sourceDataObjectId: "data-object-surgery",
     conditions: [{ field: "surgeryLevel", operator: "in", value: ["III", "IV"] }],
     dimensions: [{ field: "surgeonId", alias: "主刀医生", order: 1 }],
-    calculation: { type: "count" },
-    version: 1
+    statisticField: "surgeryCount",
+    aggregationMethod: "count",
+    calculationMethod: "count",
+    timeField: "surgeryDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-herbal-amount",
@@ -113,8 +155,13 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
     sourceDataObjectId: "data-object-prescription",
     conditions: [{ field: "drugCategory", operator: "=", value: "herbal" }],
     dimensions: [{ field: "departmentId", alias: "科室", order: 1 }],
-    calculation: { type: "sum", field: "amount" },
-    version: 1
+    statisticField: "amount",
+    aggregationMethod: "sum",
+    calculationMethod: "sum",
+    timeField: "prescriptionDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   },
   {
     id: "def-average-cost",
@@ -122,7 +169,12 @@ export const mockWorkloadDefinitions: WorkloadDefinition[] = [
     sourceDataObjectId: "data-object-outpatient-cost",
     conditions: [],
     dimensions: [{ field: "departmentId", alias: "科室", order: 1 }],
-    calculation: { type: "avg", field: "cost" },
-    version: 1
+    statisticField: "cost",
+    aggregationMethod: "avg",
+    calculationMethod: "avg",
+    timeField: "costDate",
+    version: 1,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z"
   }
 ];

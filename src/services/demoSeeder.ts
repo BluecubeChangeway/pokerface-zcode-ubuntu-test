@@ -4,7 +4,7 @@ import { mockRelations } from "../mock/mockRelations";
 import { mockRecommendations } from "../mock/mockRecommendations";
 import { mockWorkloadDefinitions } from "../mock/mockWorkloadDefinitions";
 import {
-  mockCalculationSnapshots,
+  mockCalculationGraphs,
   mockResultSets,
   mockWorkloadExecutions,
   mockWorkloadResults,
@@ -38,7 +38,7 @@ export async function seedDemoData(ds: LocalFolderDataService): Promise<void> {
   // 八个参考数据集合（播种扩展，见 LocalFolderDataService 播种扩展注释）
   await ds.saveSeedCollection("workload-definitions", mockWorkloadDefinitions);
   await ds.saveSeedCollection("workload-executions", mockWorkloadExecutions);
-  await ds.saveSeedCollection("calculation-snapshots", mockCalculationSnapshots);
+  await ds.saveSeedCollection("calculation-snapshots", mockCalculationGraphs);
   await ds.saveSeedCollection("result-sets", mockResultSets);
   await ds.saveSeedCollection("score-definitions", mockScoreDefinitions);
   await ds.saveSeedCollection("measurement-results", [mockMeasurementResult]);
@@ -54,7 +54,7 @@ export async function clearDemoData(ds: LocalFolderDataService): Promise<void> {
   await ds.deleteDemoCalculationResults(mockCalculationResults.map((result) => result.id));
   await ds.deleteSeedCollectionRows("workload-definitions", mockWorkloadDefinitions.map((d) => d.id));
   await ds.deleteSeedCollectionRows("workload-executions", mockWorkloadExecutions.map((e) => e.id));
-  await ds.deleteSeedCollectionRows("calculation-snapshots", mockCalculationSnapshots.map((s) => s.id));
+  await ds.deleteSeedCollectionRows("calculation-snapshots", mockCalculationGraphs.map((s) => s.id));
   await ds.deleteSeedCollectionRows("result-sets", mockResultSets.map((r) => r.id));
   await ds.deleteSeedCollectionRows("score-definitions", mockScoreDefinitions.map((s) => s.id));
   await ds.deleteSeedCollectionRows("measurement-results", [mockMeasurementResult.id]);

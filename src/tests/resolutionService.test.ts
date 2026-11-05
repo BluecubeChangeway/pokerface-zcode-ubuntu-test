@@ -3,7 +3,7 @@ import { resolveWorkloadToUnit } from "../domain/workload/resolutionService";
 import {
   mockWorkloadResults,
   mockResultSets,
-  mockCalculationSnapshots,
+  mockCalculationGraphs,
   mockWorkloadExecutions
 } from "../mock/mockWorkloadChain";
 import { mockWorkloadDefinitions } from "../mock/mockWorkloadDefinitions";
@@ -51,7 +51,7 @@ function buildTestContext(
     targetUnit: targetUnit! as UnitCard,
     existingResults: mockWorkloadResults,
     resultSets: mockResultSets,
-    snapshots: mockCalculationSnapshots,
+    snapshots: mockCalculationGraphs,
     unitHierarchy,
     workloadHierarchy,
     workloadDefinitionMap: new Map(mockWorkloadDefinitions.map(d => [d.id, d])),

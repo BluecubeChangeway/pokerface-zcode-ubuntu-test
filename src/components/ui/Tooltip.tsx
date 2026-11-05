@@ -130,99 +130,93 @@ export function TooltipProvider({
 // Tooltip 根组件
 // ============================================
 
-export const Tooltip = forwardRef<HTMLDivElement, TooltipProps>(
-  (
-    {
-      className,
-      content,
-      children,
-      side = 'top',
-      align = 'center',
-      variant = 'default',
-      sideOffset = 6,
-      alignOffset = 0,
-      delayDuration = 200,
-      skipDelayDuration = 100,
-      disabled = false,
-      open: controlledOpen,
-      defaultOpen = false,
-      onOpenChange,
-      tooltipId,
-    },
-    ref
-  ) => {
-    const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen);
-    const isControlled = controlledOpen !== undefined;
-    const currentOpen = isControlled ? controlledOpen : uncontrolledOpen;
-    
-    const generatedId = useId();
-    const id = tooltipId || generatedId;
+export function Tooltip({
+  className,
+  content,
+  children,
+  side = 'top',
+  align = 'center',
+  variant = 'default',
+  sideOffset = 6,
+  alignOffset = 0,
+  delayDuration = 200,
+  skipDelayDuration = 100,
+  disabled = false,
+  open: controlledOpen,
+  defaultOpen = false,
+  onOpenChange,
+  tooltipId,
+}: TooltipProps) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(defaultOpen);
+  const isControlled = controlledOpen !== undefined;
+  const currentOpen = isControlled ? controlledOpen : uncontrolledOpen;
+  
+  const generatedId = useId();
+  const id = tooltipId || generatedId;
 
-    const handleOpenChange = (open: boolean) => {
-      if (!isControlled) {
-        setUncontrolledOpen(open);
-      }
-      onOpenChange?.(open);
-    };
-
-    // 只渲染单个子元素
-    const child = React.Children.only(children);
-
-    // disabled 状态下不渲染 Tooltip
-    if (disabled) {
-      return <>{React.Children.only(children)}</>;
+  const handleOpenChange = (open: boolean) => {
+    if (!isControlled) {
+      setUncontrolledOpen(open);
     }
+    onOpenChange?.(open);
+  };
 
-    return (
+  // 只渲染单个子元素
+  const child = React.Children.only(children);
+
+  // disabled 状态下不渲染 Tooltip
+  if (disabled) {
+    return <>{React.Children.only(children)}</>;
+  }
+
+  return (
+    <div className={cn('relative inline-block', className)}>
       <TooltipPrimitive.Root
-        ref={ref}
         open={currentOpen}
         onOpenChange={handleOpenChange}
         delayDuration={delayDuration}
-        skipDelayDuration={skipDelayDuration}
-        className={cn('relative inline-block')}
       >
-        <TooltipPrimitive.Trigger asChild>
-          {React.Children.only(children)}
-        </TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Trigger asChild>
+        {React.Children.only(children)}
+      </TooltipPrimitive.Trigger>
 
-        <TooltipPrimitive.Portal>
-          <TooltipPrimitive.Content
-            id={id}
-            side={side}
-            align={align}
-            sideOffset={sideOffset}
-            alignOffset={alignOffset}
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Content
+          id={id}
+          side={side}
+          align={align}
+          sideOffset={sideOffset}
+          alignOffset={alignOffset}
+          className={cn(
+            'relative z-50 rounded-lg px-3 py-2 text-sm font-medium',
+            'animate-fade-in slide-up',
+            variantStyles[variant],
+            sideStyles[side],
+            alignStyles[align]
+          )}
+          style={{
+            '--radix-tooltip-trigger-area': 'var(--radix-tooltip-trigger-area)',
+          } as React.CSSProperties}
+        >
+          <TooltipPrimitive.Arrow
             className={cn(
-              'relative z-50 rounded-lg px-3 py-2 text-sm font-medium',
-              'animate-fade-in slide-up',
-              variantStyles[variant],
-              sideStyles[side],
-              alignStyles[align]
+              'fill-current',
+              variant === 'default' && 'fill-popover-bg',
+              variant === 'success' && 'fill-success',
+              variant === 'warning' && 'fill-warning',
+              variant === 'danger' && 'fill-danger',
+              variant === 'info' && 'fill-primary'
             )}
-            style={{
-              '--radix-tooltip-trigger-area': 'var(--radix-tooltip-trigger-area)',
-            } as React.CSSProperties}
-          >
-            <TooltipPrimitive.Arrow
-              className={cn(
-                'fill-current',
-                variant === 'default' && 'fill-popover-bg',
-                variant === 'success' && 'fill-success',
-                variant === 'warning' && 'fill-warning',
-                variant === 'danger' && 'fill-danger',
-                variant === 'info' && 'fill-primary'
-              )}
-              width={8}
-              height={4}
-            />
-            {content}
-          </TooltipPrimitive.Content>
-        </TooltipPrimitive.Portal>
-      </TooltipPrimitive.Root>
-    );
-  }
+            width={8}
+            height={4}
+          />
+          {content}
+        </TooltipPrimitive.Content>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
+  </div>
 );
+}
 Tooltip.displayName = 'Tooltip';
 
 // ============================================

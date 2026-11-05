@@ -265,9 +265,9 @@ function getDefinitionAndExecution(workloadResult: WorkloadResult, context: Reso
   const workloadResultSet = context.resultSets.find(rs => rs.id === workloadResult.resultSetId);
   const snapshotId = workloadResultSet?.snapshotId;
   const snapshot = context.snapshots.find(s => s.id === snapshotId);
-  const definitionId = snapshot?.definition.id;
+  const definitionId = snapshot?.definition?.id;
   const definition = definitionId ? context.workloadDefinitionMap.get(definitionId) : undefined;
-  const execution = snapshot ? context.workloadExecutionMap.get(snapshot.execution.id) : undefined;
+  const execution = snapshot?.execution ? context.workloadExecutionMap.get(snapshot.execution.id) : undefined;
   return { definition, execution };
 }
 
@@ -395,7 +395,7 @@ function assessSplitFeasibility(
   if (!unitDimensionField) {
     return { feasible: false, reason: "WorkloadResult 不含 Unit 维度（departmentId/wardId），无法按 Unit 拆分", certainlyNotFeasible: true };
   }
-  const definitionSupportsDimension = definition.dimensions.some(d => d.field === unitDimensionField);
+  const definitionSupportsDimension = definition?.dimensions?.some(d => d.field === unitDimensionField);
   if (!definitionSupportsDimension) {
     return { feasible: false, reason: `Definition 缺少 ${unitDimensionField} 维度，统计配置与 WorkloadResult 实际使用的 Unit 维度不一致，不支持按该维度 split`, certainlyNotFeasible: true };
   }

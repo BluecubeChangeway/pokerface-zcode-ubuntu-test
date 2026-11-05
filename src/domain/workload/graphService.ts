@@ -9,13 +9,13 @@ export interface GraphValidationError {
 function referencedNodeIds(node: CalculationNode): string[] {
   switch (node.kind) {
     case "filter":
-      return [node.input];
+      return node.input ? [node.input] : [];
     case "aggregate":
-      return [node.input];
+      return node.input ? [node.input] : [];
     case "arithmetic":
-      return [node.left, node.right];
+      return [node.left, node.right].filter((id): id is string => Boolean(id));
     case "output_column":
-      return [node.source];
+      return node.source ? [node.source] : [];
     default:
       return [];
   }
@@ -46,13 +46,22 @@ export function validateGraph(graph: CalculationGraph): GraphValidationError[] {
     }
 
     if (node.kind === "aggregate") {
-      const input = nodeById.get(node.input);
-      if (input && input.kind !== "execution_dataset" && input.kind !== "filter") {
+      const inputId = node.input;
+      if (!inputId) {
         errors.push({
           code: "aggregate_needs_dataset",
-          message: `Aggregate ${node.id} 必须作用于 execution_dataset 或 filter，得到 ${input.kind}`,
+          message: `Aggregate ${node.id} 缺少 input`,
           nodeId: node.id
         });
+      } else {
+        const input = nodeById.get(inputId);
+        if (input && input.kind !== "execution_dataset" && input.kind !== "filter") {
+          errors.push({
+            code: "aggregate_needs_dataset",
+            message: `Aggregate ${node.id} 必须作用于 execution_dataset 或 filter，得到 ${input.kind}`,
+            nodeId: node.id
+          });
+        }
       }
       if ("rowContextField" in node) {
         errors.push({
@@ -63,7 +72,7 @@ export function validateGraph(graph: CalculationGraph): GraphValidationError[] {
       }
     }
 
-    if (node.kind === "output_column") {
+    if (node.kind === "output_column" && node.source) {
       const source = nodeById.get(node.source);
       if (
         source &&
@@ -79,7 +88,7 @@ export function validateGraph(graph: CalculationGraph): GraphValidationError[] {
         });
       }
 
-      if (node.distribution === "perDataset" && dependsOnCurrentRow(graph, node.source)) {
+      if (node.distribution === "perDataset" && node.source && dependsOnCurrentRow(graph, node.source)) {
         errors.push({
           code: "invariant_violation",
           message: `perDataset 输出列 ${node.name} 不得依赖 currentRow`,
@@ -103,7 +112,7 @@ export function validateGraph(graph: CalculationGraph): GraphValidationError[] {
   for (const node of graph.nodes) {
     for (const referenceId of referencedNodeIds(node)) {
       if (nodeById.has(referenceId)) {
-        indegree.set(node.id, (indegree.get(node.id) ?? 0) + 1);
+        indegree.set(referenceId, (indegree.get(referenceId) ?? 0) + 1);
       }
     }
   }
@@ -146,10 +155,10 @@ export function dependsOnCurrentRow(
 
   if (node.kind === "field_ref" && node.scope === "currentRow") return true;
 
-  if (node.kind === "filter") {
+  if (node.kind === "filter" && node.condition) {
     const { left, right } = node.condition;
     for (const operand of [left, right]) {
-      if (operand.kind === "field_ref" && operand.scope === "currentRow") return true;
+      if (operand && operand.kind === "field_ref" && operand.scope === "currentRow") return true;
     }
   }
 

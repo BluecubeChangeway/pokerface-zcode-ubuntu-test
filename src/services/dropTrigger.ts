@@ -3,7 +3,7 @@ import type { CardSlot, WorkloadCard, BudgetCard, UnitCard } from "../domain/car
 import { canAcceptCard, createRelation } from "../domain/relation/relationService";
 import type { Relation } from "../domain/relation/types";
 import type { RelationEndpointKind } from "../domain/relation/endpointRules";
-import { isBusinessRevoked } from "../domain/workload/revocationService";
+import { isBusinessRevoked } from "../domain/workload/revocation/revocationService";
 import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
 import type { ResolutionTriggerResult } from "./resolutionTrigger";
 import { submitDropAssignRelation } from "./ActionSubmissionService";

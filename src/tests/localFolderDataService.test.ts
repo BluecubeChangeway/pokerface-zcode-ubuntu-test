@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AnyCard, BudgetCard, UnitCard } from "../domain/card/types";
 import type { Relation } from "../domain/relation/types";
 import type { WorkloadDefinition } from "../domain/workload/types";
-import { createWorkloadSplit } from "../domain/workload/splitService";
+import { createWorkloadSplit } from "../domain/workload/split/splitService";
 import { LocalFolderDataService } from "../services/LocalFolderDataService";
 import { mockCards } from "../mock/mockCards";
 import {

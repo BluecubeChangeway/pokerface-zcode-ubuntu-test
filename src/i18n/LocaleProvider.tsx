@@ -347,7 +347,7 @@ export async function preloadLocaleResources(locale: SupportedLocale, namespaces
   const ns = namespaces || NAMESPACES;
   await Promise.all(
     ns.map(n => new Promise<void>((resolve, reject) => {
-      i18n.loadResources(locale, n, (err?: Error) => {
+      (i18n as any).loadResources(locale, n, (err?: Error) => {
         if (err) reject(err);
         else resolve();
       });
@@ -360,7 +360,7 @@ export async function preloadAllLocales(namespaces?: string[]): Promise<void> {
   await Promise.all(
     locales.flatMap(locale => 
       (namespaces || NAMESPACES).map(ns => new Promise<void>((resolve, reject) => {
-        i18n.loadResources(locale, ns, (err?: Error) => {
+        (i18n as any).loadResources(locale, ns, (err?: Error) => {
           if (err) reject(err);
           else resolve();
         });

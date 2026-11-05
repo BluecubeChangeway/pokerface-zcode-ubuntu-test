@@ -3,7 +3,7 @@ import type { AnyCard, UnitCard, WorkloadCard } from "../domain/card/types";
 import type { Relation } from "../domain/relation/types";
 import type { WorkloadResult } from "../domain/workload/types";
 import type { Recommendation } from "../domain/recommendation/types";
-import { createWorkloadSplit } from "../domain/workload/splitService";
+import { createWorkloadSplit } from "../domain/workload/split/splitService";
 import { MockDataService } from "../services/MockDataService";
 import { moveWorkloadCardAssignment } from "../services/moveRelationEntry";
 import { buildResolutionRecommendationId } from "../services/resolutionTrigger";

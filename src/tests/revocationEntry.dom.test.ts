@@ -16,7 +16,7 @@ import type { WorkloadSplit } from "../domain/workload/types";
 import type { CalculationResult } from "../domain/score/types";
 import type { WorkloadCard } from "../domain/card/types";
 import type { WorkloadResult } from "../domain/workload/types";
-import type { WorkloadRevocationImpact } from "../domain/workload/revocationService";
+import type { WorkloadRevocationImpact } from "../domain/workload/revocation/revocationService";
 import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import { resetCanvasBootstrapForTests } from "../app/canvasBootstrap";

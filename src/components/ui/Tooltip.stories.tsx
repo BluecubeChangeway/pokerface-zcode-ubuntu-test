@@ -5,7 +5,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { Tooltip, TooltipProvider } from '@/components/ui/Tooltip';
 import { Button } from '@/components/ui/Button';
-import { Info, AlertCircle, CheckCircle, AlertTriangle, HelpCircle, ExternalLink, Copy, Settings, Trash2, Edit, Share2, Download, Star, Heart, Bell, MoreHorizontal } from 'lucide-react';
+import { Info, AlertCircle, CheckCircle, AlertTriangle, HelpCircle, ExternalLink, Copy, Settings, Trash2, Edit, Share2, Download, Star, Heart, Bell, MoreHorizontal, Plus, Eye, Upload, Search } from 'lucide-react';
 
 const meta: Meta<typeof Tooltip> = {
   title: 'UI/Tooltip',
@@ -37,8 +37,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // 简单的按钮包装器
-const TriggerButton = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Button variant="ghost" size="sm" {...props}>
+const TriggerButton = ({ children, className, disabled, ...props }: { children: React.ReactNode; className?: string; disabled?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+  <Button variant="ghost" size="sm" className={className} disabled={disabled} {...props}>
     {children}
   </Button>
 );

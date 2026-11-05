@@ -153,6 +153,11 @@ const Select = forwardRef((props: SelectPropsString, ref: React.Ref<HTMLButtonEl
     ...rest
   } = props;
 
+  // Internal types using string (since SelectPropsString = SelectProps<string>)
+  type ValueType = string | string[];
+  type OptionType = SelectOption<string>;
+  type FlatOptionType = { option: OptionType; group?: string };
+
   const generatedId = useId();
   const id = providedId || generatedId;
   const labelId = `${id}-label`;
@@ -160,7 +165,7 @@ const Select = forwardRef((props: SelectPropsString, ref: React.Ref<HTMLButtonEl
   const hintId = `${id}-hint`;
   const describedById = useId();
 
-  const flatOptions = useMemo(() => flattenOptions(options), [options]);
+  const flatOptions = useMemo(() => flattenOptions(options as (SelectOption<string> | SelectGroup<string>)[]), [options]);
   const optionValues = useMemo(() => flatOptions.map(({ option }) => option.value), [flatOptions]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -174,17 +179,14 @@ const Select = forwardRef((props: SelectPropsString, ref: React.Ref<HTMLButtonEl
   const hasOptions = filteredOptions.length > 0;
 
   const isControlled = value !== undefined;
-  const currentValue = isControlled ? value : defaultValue;
+  const currentValue = isControlled ? value : (defaultValue as ValueType | undefined) ?? (multiple ? [] : '');
 
-  const handleValueChange = (newValue: T | T[]) => {
-    if (!isControlled) {
-      // 非受控模式下不需要额外处理，Radix 会管理
-    }
+  const handleValueChange = (newValue: ValueType) => {
     onValueChange?.(newValue);
   };
 
   const getDisplayValue = () => {
-    if (currentValue === undefined || currentValue === null) return placeholder;
+    if (currentValue === undefined || currentValue === null || (Array.isArray(currentValue) && currentValue.length === 0)) return placeholder;
     if (renderValue) return renderValue(currentValue, flatOptions.map(({ option }) => option));
     if (multiple) {
       const values = Array.isArray(currentValue) ? currentValue : [currentValue];
@@ -213,8 +215,8 @@ const Select = forwardRef((props: SelectPropsString, ref: React.Ref<HTMLButtonEl
 
   return (
     <SelectPrimitive.Root
-      value={isControlled ? currentValue : undefined}
-      defaultValue={!isControlled ? defaultValue : undefined}
+      value={value as any}
+      defaultValue={defaultValue as any}
       onValueChange={handleValueChange}
       disabled={disabled}
       required={required}
@@ -257,8 +259,6 @@ const Select = forwardRef((props: SelectPropsString, ref: React.Ref<HTMLButtonEl
 
         <SelectPrimitive.Portal>
           <SelectPrimitive.Content
-            open={isOpen}
-            onOpenChange={setIsOpen}
             className={cn(
               'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border border-border bg-popover',
               'text-popover-foreground shadow-md',
@@ -293,7 +293,7 @@ const Select = forwardRef((props: SelectPropsString, ref: React.Ref<HTMLButtonEl
                 <>
                   {(() => {
                     // Group options by group
-                    const grouped = new Map<string | undefined, { option: SelectOption<T>; group?: string }[]>();
+                    const grouped = new Map<string | undefined, FlatOptionType[]>();
                     for (const item of filteredOptions) {
                       const key = item.group;
                       if (!grouped.has(key)) {

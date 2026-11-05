@@ -61,9 +61,9 @@ describe("calculation graph semantics", () => {
     const cyclic: CalculationGraph = {
       id: "bad-graph",
       nodes: [
-        { id: "a", kind: "constant", value: 1 } as const,
-        { id: "b", kind: "arithmetic", operator: "+", left: "a", right: "c" } as const,
-        { id: "c", kind: "arithmetic", operator: "+", left: "b", right: "a" } as const
+        { id: "a", kind: "constant", value: 1, createdAt: new Date().toISOString() } as const,
+        { id: "b", kind: "arithmetic", operator: "+", left: "a", right: "c", createdAt: new Date().toISOString() } as const,
+        { id: "c", kind: "arithmetic", operator: "+", left: "b", right: "a", createdAt: new Date().toISOString() } as const
       ] as const,
       rootNodeId: "c"
     };
@@ -97,7 +97,7 @@ describe("calculation graph semantics", () => {
     const bad: CalculationGraph = {
       id: "bad-agg",
       nodes: [
-        { id: "ds", kind: "execution_dataset" } as const,
+        { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() } as const,
         { id: "f", kind: "field_ref", field: "x" } as const,
         { id: "agg", kind: "aggregate", aggregate: "avg", input: "f" } as const,
         {
@@ -175,8 +175,8 @@ describe("disease weight execution (official business case)", () => {
     const graph: CalculationGraph = {
       id: "div-zero-test",
       nodes: [
-        { id: "zero", kind: "constant", value: 0 } as const,
-        { id: "one", kind: "constant", value: 1 } as const,
+        { id: "zero", kind: "constant", value: 0, createdAt: new Date().toISOString() } as const,
+        { id: "one", kind: "constant", value: 1, createdAt: new Date().toISOString() } as const,
         {
           id: "divide",
           kind: "arithmetic",
@@ -218,7 +218,7 @@ describe("disease weight execution (official business case)", () => {
     const graph: CalculationGraph = {
       id: "empty-agg-test",
       nodes: [
-        { id: "ds", kind: "execution_dataset" } as const,
+        { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() } as const,
         {
           id: "empty-src",
           kind: "filter",
@@ -226,7 +226,7 @@ describe("disease weight execution (official business case)", () => {
           condition: {
             left: { id: "l", kind: "field_ref", field: "diseaseGroup" } as const,
             operator: "=",
-            right: { id: "r", kind: "constant", value: "non-existent" } as const
+            right: { id: "r", kind: "constant", value: "non-existent", createdAt: new Date().toISOString() } as const
           }
         } as const,
         { id: "count-empty", kind: "aggregate", aggregate: "count", input: "empty-src" } as const,
@@ -347,7 +347,7 @@ describe("perGroup / missing aggregates", () => {
     const graph: CalculationGraph = {
       id: "empty-sums",
       nodes: [
-        { id: "ds", kind: "execution_dataset" } as const,
+        { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() } as const,
         {
           id: "empty-src",
           kind: "filter",
@@ -355,7 +355,7 @@ describe("perGroup / missing aggregates", () => {
           condition: {
             left: { id: "l", kind: "field_ref", field: "diseaseGroup" } as const,
             operator: "=",
-            right: { id: "r", kind: "constant", value: "non-existent" } as const
+            right: { id: "r", kind: "constant", value: "non-existent", createdAt: new Date().toISOString() } as const
           }
         } as const,
         { id: "sum-empty", kind: "aggregate", aggregate: "sum", field: "totalCost", input: "empty-src" } as const,
@@ -392,7 +392,7 @@ describe("perGroup / missing aggregates", () => {
     const graph: CalculationGraph = {
       id: "with-pergroup",
       nodes: [
-        { id: "ds", kind: "execution_dataset" } as const,
+        { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() } as const,
         { id: "grp", kind: "aggregate", aggregate: "sum", field: "totalCost", input: "ds" } as const,
         { id: "pg-out", kind: "output_column", name: "deptTotal", role: "final", distribution: "perGroup", source: "grp" } as const
       ] as const,

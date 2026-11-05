@@ -8,7 +8,7 @@ import {
   batchSplitId,
   determineChildIdOwnership,
   workloadResultContentEquals,
-} from "../domain/workload/splitService";
+} from "../domain/workload/split/splitService";
 import type { WorkloadResult, Period } from "../domain/workload/types";
 import type { Relation } from "../domain/relation/types";
 import type { WorkloadCard } from "../domain/card/types";

@@ -18,7 +18,7 @@ import {
   onWorkloadCardDragStart,
   onWorkloadCardSlotDrop,
   type DataTransferLike,
-} from "../app/dropInteraction";
+} from "../../app/dropInteraction";
 
 const WORKLOAD = "workload-neurosurgery-outpatient";
 const NEURO_UNIT = "unit-neurosurgery";

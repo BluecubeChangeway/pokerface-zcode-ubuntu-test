@@ -2,7 +2,7 @@ import type { DataService } from "./DataService";
 import { createRelation } from "../domain/relation/relationService";
 import type { Relation } from "../domain/relation/types";
 import type { RelationEndpointKind } from "../domain/relation/endpointRules";
-import { isBusinessRevoked } from "../domain/workload/revocationService";
+import { isBusinessRevoked } from "../domain/workload/revocation/revocationService";
 import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
 import { submitMoveAssignRelation, submitUnassignRelation } from "./ActionSubmissionService";
 import { recommendationStore } from "../stores/recommendationStore";

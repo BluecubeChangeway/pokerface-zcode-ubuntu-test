@@ -2,6 +2,7 @@
  * Switch 组件故事
  */
 
+import React from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import { Switch } from '@/components/ui/Switch';
 

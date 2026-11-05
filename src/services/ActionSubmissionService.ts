@@ -1,6 +1,7 @@
 import type { DataService } from "./DataService";
 import type { ActionExecutorResult, PendingSplitRelation } from "./actionExecutor";
 import type { WorkloadResult, WorkloadSplit } from "../domain/workload/types";
+import type { SplitProvenanceRecord } from "../domain/workload/provenance/splitProvenance";
 import type { AnyCard, WorkloadCard } from "../domain/card/types";
 import type { Relation } from "../domain/relation/types";
 import { createRelation } from "../domain/relation/relationService";
@@ -9,12 +10,12 @@ import {
   batchSplitId,
   determineChildIdOwnership,
   workloadResultContentEquals,
-} from "../domain/workload/splitService";
-import { reusableContentEquals } from "../domain/workload/splitProvenance";
+} from "../domain/workload/split/splitService";
+import { reusableContentEquals } from "../domain/workload/provenance/splitProvenance";
 import {
   isBusinessRevoked,
   isWorkloadSplitRecordRevoked,
-} from "../domain/workload/revocationService";
+} from "../domain/workload/revocation/revocationService";
 import { v4 as uuidv4 } from "uuid";
 import type { RelationEndpointKind } from "../domain/relation/endpointRules";
 

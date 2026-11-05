@@ -10,7 +10,7 @@ import { mockRelations } from "../mock/mockRelations";
 import {
   mockWorkloadResults,
   mockResultSets,
-  mockCalculationSnapshots,
+  mockCalculationGraphs,
   mockWorkloadExecutions,
   mockDischargeResultSet,
 } from "../mock/mockWorkloadChain";
@@ -36,7 +36,7 @@ function createStubDataService(
     getRelations: async () => relations,
     getWorkloadResults: async () => mockWorkloadResults,
     getResultSets: async () => resultSets,
-    getCalculationSnapshots: async () => mockCalculationSnapshots,
+    getCalculationSnapshots: async () => mockCalculationGraphs,
     getWorkloadExecutions: async () => mockWorkloadExecutions,
     getWorkloadDefinition:
       getWorkloadDefinition ??

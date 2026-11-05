@@ -7,7 +7,7 @@ import { MockDataService } from "../services/MockDataService";
 import { revokeSplitLayer, revokeDerivedPath } from "../services/revocationEntry";
 import { recommendationStore } from "../stores/recommendationStore";
 import { buildResolutionRecommendationId } from "../services/resolutionTrigger";
-import type { WorkloadRevocationImpact } from "../domain/workload/revocationService";
+import type { WorkloadRevocationImpact } from "../domain/workload/revocation/revocationService";
 
 /**
  * D-151 剩余① 撤回后自动重新 Resolution（假设 A-001 配对范围）

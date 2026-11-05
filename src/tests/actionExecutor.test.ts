@@ -7,7 +7,7 @@ import { mockRelations } from "../mock/mockRelations";
 import { mockWorkloadResults } from "../mock/mockWorkloadChain";
 import { mockWorkloadDefinitions } from "../mock/mockWorkloadDefinitions";
 import { mockWorkloadExecutions } from "../mock/mockWorkloadChain";
-import { mockCalculationSnapshots } from "../mock/mockWorkloadChain";
+import { mockCalculationGraphs } from "../mock/mockWorkloadChain";
 import { mockResultSets } from "../mock/mockWorkloadChain";
 import type { ActionExecutorContext, ActionExecutorResult } from "../services/actionExecutor";
 import type { Recommendation } from "../domain/recommendation/types";
@@ -44,7 +44,7 @@ describe("Integration with ResolutionService", () => {
       targetUnit: { id: "unit-neurosurgery-ward-1", type: "unit", name: "神经外科一病区" } as any,
       existingResults,
       resultSets: mockResultSets,
-      snapshots: mockCalculationSnapshots,
+      snapshots: mockCalculationGraphs,
       unitHierarchy,
       workloadHierarchy,
       workloadDefinitionMap: new Map(mockWorkloadDefinitions.map(d => [d.id, d])),

@@ -7,7 +7,7 @@ import type {
   CalculationSnapshot,
 } from "./resolutionTypes";
 import type { DataService } from "../../services/DataService";
-import { isBusinessRevoked } from "./revocationService";
+import { isBusinessRevoked } from "./revocation/revocationService";
 
 /**
  * 从 Relations 推导 Unit hierarchy（structure 关系）
@@ -114,7 +114,7 @@ export function deriveMappingEvidences(
 
   const snapshot = snapshots.find((s) => s.id === resultSet.snapshotId);
   const sourceDataObjectId =
-    snapshot?.definition.sourceDataObjectId ?? resultSet.sourceDataObjectId;
+    snapshot?.definition?.sourceDataObjectId ?? resultSet.sourceDataObjectId;
   if (!sourceDataObjectId) {
     return [];
   }

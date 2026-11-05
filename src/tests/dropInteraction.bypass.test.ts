@@ -19,7 +19,7 @@ vi.mock("../services/dropTrigger", () => ({
 
 describe("UI drop handler 防绕过：唯一经过 dropTrigger", () => {
   it("onWorkloadCardSlotDrop 调用 handleWorkloadCardDropOnUnitSlot，参数逐项一致", async () => {
-    const { onWorkloadCardDragStart, onWorkloadCardSlotDrop } = await import("../app/dropInteraction");
+    const { onWorkloadCardDragStart, onWorkloadCardSlotDrop } = await import("../../app/dropInteraction");
     const { dataService } = await import("../services/MockDataService");
 
     const slot = mockSlots.find((s) => s.type === "workload")! as CardSlot;

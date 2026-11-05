@@ -4,12 +4,12 @@ import type { Relation } from "../domain/relation/types";
 import type { Recommendation } from "../domain/recommendation/types";
 import { MockDataService, resetMockDataService } from "../services/MockDataService";
 import { recommendationStore } from "../stores/recommendationStore";
-import { checkAndRecommendUnitSplit } from "../services/unitSplitService";
+import { checkAndRecommendUnitSplit } from "../domain/workload/split/unitSplitService";
 import {
   onCardSlotDrop,
   onUnitCardDragStart,
   type DataTransferLike,
-} from "../app/dropInteraction";
+} from "../../app/dropInteraction";
 import { buildActionContext, confirmActionFor } from "../app/recommendationActions";
 import { executeUserDecision } from "../services/actionExecutor";
 import { submitActionResult } from "../services/ActionSubmissionService";

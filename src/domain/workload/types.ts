@@ -1,198 +1,91 @@
-import type { Period } from "../period/types";
-export type { Period } from "../period/types";
+/**
+ * Workload Domain Types - 核心类型定义
+ */
 
-export type ConditionOperator =
-  | "="
-  | "!="
-  | ">"
-  | ">="
-  | "<"
-  | "<="
-  | "in"
-  | "not_in"
-  | "contains"
-  | "between";
+// ============================================
+// 基础类型 (from period/types)
+// ============================================
+
+import type { Period, PeriodMode, Phase } from "../period/types";
+export type { Period, PeriodMode, Phase } from "../period/types";
+
+export interface SourcePeriod {
+  sourceId: string;
+  period: Period;
+}
+
+// ============================================
+// Workload Definition & Execution
+// ============================================
 
 export interface Condition {
   field: string;
-  operator: ConditionOperator;
+  operator: string;
   value: unknown;
-}
-
-export interface Dimension {
-  field: string;
-  alias?: string;
-  order?: number;
-}
-
-export type CalculationType = "count" | "sum" | "avg" | "weighted" | "formula" | "custom";
-
-/**
- * @deprecated 过渡遗留。
- * V1 起计算事实的唯一载体是 CalculationGraph（见 D-115）。
- * CalculationDefinition 只允许作为 Graph 的降载/简化构建描述，
- * 不得再作为“真正的算法事实”直接持久化。
- */
-export interface CalculationDefinition {
-  type: CalculationType;
-  field?: string;
-  expression?: string;
-  parameters?: Record<string, unknown>;
-}
-
-export interface CoverageRule {
-  actualValue?: number;
-  monthlyAverage?: number;
-  coveredValue?: number;
-  sourcePeriod?: Period;
-  targetPeriod?: Period;
-}
-
-export interface WorkloadAggregateSummary {
-  childTotal: number;
-  remainderTotal: number;
-  coveredTotal: number;
 }
 
 export interface WorkloadDefinition {
   id: string;
   name: string;
+  description?: string;
   sourceDataObjectId: string;
-  conditions: Condition[];
-  dimensions: Dimension[];
-  calculation: CalculationDefinition;
-  coverage?: CoverageRule;
+  statisticField: string;
+  aggregationMethod: "sum" | "avg" | "count" | "min" | "max" | "custom" | "weighted";
+  calculationMethod?: string;
+  timeField: string;
+  filters?: Record<string, unknown>;
+  dimensions?: Array<{ field: string; alias: string; order: number }>;
+  conditions?: Condition[];
+  createdAt: string;
+  updatedAt: string;
   version: number;
 }
 
 export interface WorkloadExecution {
   id: string;
   definitionId: string;
-  period: Period;
-  conditions: Condition[];
-  dimensions: Dimension[];
-  parameters?: Record<string, unknown>;
+  period?: Period;
+  conditions?: Condition[];
+  dimensions?: Array<{
+    field: string;
+    alias: string;
+    order: number;
+  }>;
+  status?: "pending" | "running" | "completed" | "failed";
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
 }
 
-export type CalculationNodeKind =
-  | "execution_dataset"
-  | "field_ref"
-  | "constant"
-  | "filter"
-  | "aggregate"
-  | "arithmetic"
-  | "output_column";
-
-/** Execution Dataset 节点：代表整个执行数据集，是 Graph 的唯一数据入口。 */
-export interface ExecutionDatasetNode {
-  id: string;
-  kind: "execution_dataset";
-}
-
-export interface FieldRefNode {
-  id: string;
-  kind: "field_ref";
-  field: string;
-  /** 引用当前正在求值的行。省略时默认指向正在被遍历的那一行。 */
-  scope?: "currentRow";
-}
-
-export interface ConstantNode {
-  id: string;
-  kind: "constant";
-  value: number | string | null;
-}
-
-export interface FilterNode {
-  id: string;
-  kind: "filter";
-  input: string;
-  condition: {
-    left: FieldRefNode | ConstantNode;
-    operator: "=" | "!=" | ">" | ">=" | "<" | "<=";
-    right: FieldRefNode | ConstantNode;
-  };
-}
-
-export interface AggregateNode {
-  id: string;
-  kind: "aggregate";
-  aggregate: "count" | "sum" | "avg" | "min" | "max";
-  input: string;
-  field?: string;
-}
-
-export interface ArithmeticNode {
-  id: string;
-  kind: "arithmetic";
-  operator: "+" | "-" | "*" | "/";
-  left: string;
-  right: string;
-}
-
-export interface OutputColumnNode {
-  id: string;
-  kind: "output_column";
-  name: string;
-  role: "final" | "intermediate";
-  /** perGroup 预留，不在本阶段实现 */
-  distribution: "perRow" | "perDataset" | "perGroup";
-  source: string;
-}
-
-export type CalculationNode =
-  | ExecutionDatasetNode
-  | FieldRefNode
-  | ConstantNode
-  | FilterNode
-  | AggregateNode
-  | ArithmeticNode
-  | OutputColumnNode;
-
-export interface CalculationGraph {
-  id: string;
-  name?: string;
-  nodes: CalculationNode[];
-  rootNodeId: string;
-}
-
-export interface CalculationSnapshot {
-  id: string;
-  definition: WorkloadDefinition;
-  execution: WorkloadExecution;
-  graph: CalculationGraph;
-  businessFields: string[];
-  outputColumns: string[];
-  resultDimensions: string[];
-  modelVersionId?: string;
-  dataVersionId?: string;
-  note?: string;
-  derivedFromSnapshotId?: string;
-}
-
-export type ResultGranularity = "row" | "group" | "aggregate" | "intermediate";
+// ============================================
+// Workload Result & ResultSet
+// ============================================
 
 export interface ResultItem {
   id: string;
-  /** null 表达"无数据"；缺失 ≠ 0（INV-079/080） */
+  resultSetId: string;
+  name: string;
   value: number | null;
   dimensions: Record<string, string>;
-  granularity: ResultGranularity;
-  /** 仅统计口径维度，不得表达 Unit/Budget 层级 */
   outputColumnName?: string;
   roleInGraph?: "final" | "intermediate";
+  granularity?: "aggregate" | "row" | "perRow" | "perGroup";
+  metadata?: Record<string, unknown>;
 }
 
 export interface ResultSet {
-  id: string;
-  snapshotId: string;
-  period: Period;
-  items: ResultItem[];
-  /** "missing" = 本次执行数据量为 0 行，不允许伪造 0 */
-  status?: "complete" | "missing";
-  warnings?: string[];
-  /** 可选：源数据对象 ID */
+  snapshotId?: string;
   sourceDataObjectId?: string;
+  id: string;
+  workloadDefinitionId: string;
+  workloadExecutionId: string;
+  period?: Period;
+  items: ResultItem[];
+  columns?: string[];
+  totalCount: number;
+  createdAt: string;
+  status?: string;
+  warnings?: string[];
 }
 
 export interface WorkloadResult {
@@ -202,15 +95,38 @@ export interface WorkloadResult {
   name: string;
   value: number | null;
   dimensions: Record<string, string>;
-  /** 结果所属期间（来自 ResultSet.period） */
   period?: Period;
-  /**
-   * 业务生命周期（D-154）：缺省 = active；"revoked" = 已被撤回。
-   * 撤回只失效业务有效性，不改写任何统计数值字段；
-   * revoked Result 在业务查询中等同不存在（不进入 Resolution / Recommendation / 计算）。
-   */
+  workloadDefinitionId?: string;
+  workloadExecutionId?: string;
   businessStatus?: "active" | "revoked";
+  createdAt?: string;
+  updatedAt?: string;
 }
+
+export interface WorkloadResultSet {
+  id: string;
+  workloadDefinitionId: string;
+  workloadExecutionId: string;
+  period?: Period;
+  items: ResultItem[];
+  totalCount: number;
+  createdAt: string;
+  status?: string;
+  warnings?: string[];
+}
+
+export interface WorkloadResultItem {
+  id: string;
+  resultSetId: string;
+  name: string;
+  value: number | null;
+  dimensions: Record<string, string>;
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================
+// Workload Split
+// ============================================
 
 export interface WorkloadSplit {
   id: string;
@@ -221,3 +137,297 @@ export interface WorkloadSplit {
   reason?: string;
   metadata?: Record<string, unknown>;
 }
+
+export interface SplitFeasibilityContext {
+  sourceDataSupportsSplit: boolean;
+  definitionAllowsSplit: boolean;
+  executionCoversTargetUnits: boolean;
+  targetUnitIds: string[];
+  requiredMappings: string[];
+  hasCompleteSourceData: boolean;
+}
+
+export interface SplitExecutionInput {
+  parentResultId: string;
+  children: Array<{
+    id?: string;
+    name: string;
+    value: number | null;
+    dimensions: Record<string, string>;
+    resultSetId: string;
+    resultItemId: string;
+    period?: Period;
+  }>;
+  splitType: "complete" | "partial";
+  reason?: string;
+  tolerance?: number;
+  executionBatchId?: string;
+}
+
+export interface SplitExecutionResult {
+  childResults: WorkloadResult[];
+  workloadSplits: WorkloadSplit[];
+  summary: {
+    parentResultId: string;
+    parentValue: number | null;
+    childTotal: number;
+    remainder: number;
+    isComplete: boolean;
+    hasOverflow: boolean;
+  };
+}
+
+export type ExecutionOwnership = "current" | "other" | "unknown";
+
+// ============================================
+// Calculation Types
+// ============================================
+
+export type CalculationNodeKind =
+  | "execution_dataset"
+  | "filter"
+  | "aggregate"
+  | "arithmetic"
+  | "field_ref"
+  | "constant"
+  | "output_column";
+
+export interface CalculationNode {
+  id: string;
+  kind: CalculationNodeKind;
+  name?: string;
+  description?: string;
+  createdAt?: string;
+  
+  // execution_dataset
+  definitionId?: string;
+  executionId?: string;
+  period?: Period;
+  
+  // filter
+  input?: string;
+  condition?: any;
+  
+  // aggregate
+  aggregate?: string;
+  aggregateType?: "sum" | "avg" | "count" | "min" | "max" | "custom";
+  aggregateField?: string;
+  groupBy?: string[];
+  
+  // arithmetic
+  left?: string;
+  right?: string;
+  operator?: "+" | "-" | "*" | "/";
+  
+  // field_ref
+  fieldName?: string;
+  field?: string;
+  sourceNodeId?: string;
+  scope?: string;
+  
+  // constant
+  value?: number | string | boolean;
+  
+  // output_column
+  source?: string;
+  outputName?: string;
+  outputColumnName?: string;
+  outputType?: "number" | "string" | "boolean";
+  role?: "final" | "intermediate";
+  distribution?: "perDataset" | "perRow" | "perGroup";
+  
+  // common
+  // name?: string; // 定义在 line 198
+}
+
+// Specific node type interfaces for graphExecutor
+export interface AggregateNode extends CalculationNode {
+  kind: "aggregate";
+  input?: string;
+  aggregate?: string;
+  aggregateField?: string;
+}
+
+export interface ArithmeticNode extends CalculationNode {
+  kind: "arithmetic";
+  left?: string;
+  right?: string;
+  operator?: "+" | "-" | "*" | "/";
+}
+
+export interface FilterNode extends CalculationNode {
+  kind: "filter";
+  input?: string;
+  condition?: any;
+}
+
+export interface OutputColumnNode extends CalculationNode {
+  kind: "output_column";
+  source: string;
+  outputName: string;
+  outputColumnName?: string;
+  role?: "final" | "intermediate";
+  distribution?: "perDataset" | "perRow" | "perGroup";
+}
+
+export interface CalculationGraph {
+  id: string;
+  name?: string;
+  rootNodeId?: string;
+  nodes: CalculationNode[];
+  edges?: Array<{ from: string; to: string }>;
+  createdAt: string;
+}
+
+export interface CalculationSnapshot {
+  id: string;
+  graph: CalculationGraph;
+  dataSourceId?: string;
+  dataVersion?: string;
+  definition?: WorkloadDefinition;
+  execution?: WorkloadExecution;
+  outputColumns?: Array<{ name: string; type: string }>;
+  resultDimensions?: string[];
+  versionRefs?: Record<string, string>;
+  note?: string;
+  derivedFromSnapshotId?: string;
+  createdAt: string;
+}
+
+export interface CalculationResult {
+  id: string;
+  snapshotId: string;
+  scoreResults: ScoreResult[];
+  businessStatus?: "active" | "revoked";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScoreResult {
+  workloadId: string;
+  score: number;
+  workloadIdInContext?: string;
+}
+
+// ============================================
+// Score & Measurement
+// ============================================
+
+export interface ScoreDefinition {
+  id: string;
+  name: string;
+  description?: string;
+  formula: string;
+  variables: Record<string, unknown>;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MeasurementResult {
+  id: string;
+  definitionId: string;
+  executionId: string;
+  unitScores: Record<string, number>;
+  ruler: Record<string, number>;
+  adjustmentTable: AdjustmentTable;
+  createdAt: string;
+}
+
+export interface AdjustmentTable {
+  id: string;
+  measurementResultId: string;
+  adjustments: Array<{
+    unitId: string;
+    originalScore: number;
+    adjustedScore: number;
+    adjustmentType: "add" | "multiply" | "override";
+    reason: string;
+  }>;
+  createdAt: string;
+}
+
+export interface WorkloadAggregateSummary {
+  workloadId: string;
+  totalValue: number;
+  childCount: number;
+  averageValue: number;
+  minValue: number;
+  maxValue: number;
+  period: Period;
+  childTotal?: number;
+  coveredTotal?: number;
+}
+
+// ============================================
+// Split Provenance (从 provenance 模块导出)
+// ============================================
+
+export interface RevocationSnapshot {
+  cards: any[];
+  relations: any[];
+  workloadResults: WorkloadResult[];
+  workloadSplits: any[];
+  calculationResults: any[];
+}
+
+export interface WorkloadRevocationImpact {
+  revokedCards: any[];
+  revokedWorkloadResults: WorkloadResult[];
+  deactivatedRelations: any[];
+  revokedWorkloadSplits: any[];
+  revokedCalculationResults: any[];
+  retained: any[];
+  deletedCards: any[];
+  deletedWorkloadResults: WorkloadResult[];
+  manualReview: { cards: any[]; results: WorkloadResult[] };
+}
+
+export interface SplitLayerRevocationInput {
+  snapshot: RevocationSnapshot;
+  parentWorkloadCardId: string;
+  executionBatchId?: string;
+}
+
+export interface FullPathRevocationInput {
+  snapshot: RevocationSnapshot;
+  entryWorkloadCardId: string;
+}
+
+export interface ContinuedUseEvidence {
+  cardId: string;
+  evidence: string;
+}
+
+// ============================================
+// DropTriggerResult
+// ============================================
+
+export interface DropTriggerResult {
+  outcome: string;
+  relationOutcome: string;
+  relation?: any;
+  recommendation?: any;
+  error?: string;
+  deactivatedRelation?: any;
+}
+
+// ============================================
+// Re-exports from submodules
+// ============================================
+
+// Split 相关类型 (已在本文件定义，不需要重复导出)
+// 从 splitService 导出 SplitValidationError
+export type { SplitValidationError } from "./split/splitService";
+
+// 从 provenance 导出溯源相关类型 (已在 splitProvenance.ts 定义，仅作类型导出)
+export type { SplitProvenanceCondition, SplitProvenanceRecord } from "./provenance/splitProvenance";
+
+// Revocation 相关类型 (RevocationSnapshot, WorkloadRevocationImpact 等已在本文件定义)
+// 从 revocationService 导出其他未在本文件定义的类型
+// 注意：RevocationSnapshot, WorkloadRevocationImpact, SplitLayerRevocationInput, FullPathRevocationInput, ContinuedUseEvidence 已在本文件定义
+
+// 外部类型
+export type { WorkloadCard } from "../card/types";
+export type { Relation } from "../relation/types";
+// CalculationResult 已在本文件定义（line 297），不再从 score 重复导出

@@ -8,7 +8,7 @@ import { recommendationStore } from "../stores/recommendationStore";
 import { buildActionContext, sourceWorkloadCardFrom } from "../app/recommendationActions";
 import { executeUserDecision } from "../services/actionExecutor";
 import { submitActionResult } from "../services/ActionSubmissionService";
-import type { SplitProvenanceRecord } from "../domain/workload/splitProvenance";
+import type { SplitProvenanceRecord } from "../domain/workload/provenance/splitProvenance";
 
 /**
  * R3 拆分溯源与跨批次复用（D-157 规则 B 实施；用户裁定 A-003 + 2026-10-22 批复

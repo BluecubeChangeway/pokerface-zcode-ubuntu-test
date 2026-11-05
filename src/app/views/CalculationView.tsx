@@ -11,12 +11,11 @@ import {
   onWorkloadCardSlotDrop,
   onUnitCardDragStart,
   onBudgetCardDragStart,
-  onUnitCardCanvasDrop,
-  onBudgetCardSlotDrop,
-  onWorkloadCardDropOnWorkloadCard,
+  onUnitCardSlotDrop,
+  onCardSlotDrop,
   type DataTransferLike,
-  type UnitCardDropResult,
 } from "../dropInteraction";
+import { handleUnitCardDropOnCanvas, handleWorkloadCardDropOnWorkloadCard } from "../../services/dropTrigger";
 import {
   asUnitCard,
   asWorkloadCard,
@@ -50,7 +49,7 @@ import {
   revokeDerivedPathAsPreviewed,
   revokeSplitLayer,
 } from "../../services/revocationEntry";
-import type { WorkloadRevocationImpact } from "../../domain/workload/revocationService";
+import type { WorkloadRevocationImpact } from "../../domain/workload/revocation";
 import { clsx } from "clsx";
 import { useI18n } from "../providers/I18nProvider";
 /* Framer Motion removed for happy-dom compatibility - using CSS transitions instead */
@@ -256,31 +255,17 @@ export function CalculationView() {
 
   const makeSlotDropHandler = (slot: CardSlot) => (event: React.DragEvent) => {
     event.preventDefault();
-    if (slot.type === "budget") {
-      void onBudgetCardSlotDrop(
-        dataService,
-        event.dataTransfer as unknown as DataTransferLike,
-        slot
-      ).then((result) => {
-        if (result.outcome === "relation_failed") {
-          setActionError(result.error);
-        }
-      }).catch((error) => {
-        setActionError(error instanceof Error ? error.message : String(error));
-      });
-    } else {
-      void onWorkloadCardSlotDrop(
-        dataService,
-        event.dataTransfer as unknown as DataTransferLike,
-        slot
-      ).then((result) => {
-        if (result.outcome === "relation_failed") {
-          setActionError(result.error);
-        }
-      }).catch((error) => {
-        setActionError(error instanceof Error ? error.message : String(error));
-      });
-    }
+    void onCardSlotDrop(
+      dataService,
+      event.dataTransfer as unknown as DataTransferLike,
+      slot
+    ).then((result) => {
+      if (result.outcome === "relation_failed") {
+        setActionError(result.error);
+      }
+    }).catch((error) => {
+      setActionError(error instanceof Error ? error.message : String(error));
+    });
   };
   const makeSlotDragOverHandler = () => (event: React.DragEvent) => {
     event.preventDefault();
@@ -296,8 +281,8 @@ export function CalculationView() {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    const result = onUnitCardCanvasDrop(
-      event.dataTransfer as unknown as DataTransferLike,
+    const result = handleUnitCardDropOnCanvas(
+      (event.dataTransfer as unknown as DataTransferLike).getData("text/unit-card-id"),
       x,
       y
     );
@@ -358,14 +343,16 @@ export function CalculationView() {
                 return (event: React.DragEvent) =>
                   onBudgetCardDragStart(
                     event.dataTransfer as unknown as DataTransferLike,
-                    budgetCard.id
+                    budgetCard.id,
+                    "" // No source unit when dragging from deck
                   );
               }
               if (activeType === "unit" && unitCard) {
                 return (event: React.DragEvent) =>
                   onUnitCardDragStart(
                     event.dataTransfer as unknown as DataTransferLike,
-                    unitCard.id
+                    unitCard.id,
+                    "" // No source unit when dragging from deck
                   );
               }
               return undefined;
@@ -375,17 +362,22 @@ export function CalculationView() {
               onDragOver: (event: React.DragEvent) => event.preventDefault(),
               onDrop: (event: React.DragEvent) => {
                 event.preventDefault();
-                void onWorkloadCardDropOnWorkloadCard(
-                  dataService,
-                  event.dataTransfer as unknown as DataTransferLike,
-                  workloadCard.id
-                ).then((result) => {
-                  if (result.outcome === "relation_failed") {
-                    setActionError(result.error);
-                  }
-                }).catch((error) => {
-                  setActionError(error instanceof Error ? error.message : String(error));
-                });
+                // Handle WorkloadCard dropped on another WorkloadCard (create workload_split relation)
+                // Need to get the source workload card ID from dataTransfer
+                const sourceCardId = (event.dataTransfer as unknown as DataTransferLike).getData("text/workload-card-id");
+                if (sourceCardId) {
+                  void handleWorkloadCardDropOnWorkloadCard(
+                    dataService,
+                    sourceCardId,
+                    workloadCard.id
+                  ).then((result) => {
+                    if (result.outcome === "relation_failed") {
+                      setActionError(result.error);
+                    }
+                  }).catch((error) => {
+                    setActionError(error instanceof Error ? error.message : String(error));
+                  });
+                }
               }
             } : {};
 

@@ -8,8 +8,10 @@
  * 用途：
  * - 统一承载推荐的元数据与生命周期状态
  * - 通过 `kind` 标识推荐所属业务域
- * - 通过 `payload` 携带具体业务推荐对象（如 ResolutionRecommendation）
+ * - 通过 `payload` 携带具体业务推荐对象（如 resolutionTypes.ts 中的 ResolutionRecommendation）
  */
+
+import type { Period } from "../period/types";
 
 export type RecommendationKind =
   | "resolution"      // 工作量-单元匹配推荐
@@ -46,6 +48,7 @@ export interface UserDecision {
       dimensions: Record<string, string>;
       resultSetId: string;
       resultItemId: string;
+      period?: Period;  // 可选：子结果的统计周期，用于生成 CalculationSnapshot
     }>;
     splitType?: "complete" | "partial";
     reason?: string;

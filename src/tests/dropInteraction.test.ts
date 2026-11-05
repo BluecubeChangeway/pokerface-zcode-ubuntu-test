@@ -4,7 +4,7 @@ import {
   onWorkloadCardSlotDrop,
   WORKLOAD_CARD_DRAG_TYPE,
   type DataTransferLike,
-} from "../app/dropInteraction";
+} from "../../app/dropInteraction";
 import { recommendationStore } from "../stores/recommendationStore";
 import { canvasStore } from "../stores/canvasStore";
 import type { DataService } from "../services/DataService";
@@ -15,7 +15,7 @@ import { mockRelations } from "../mock/mockRelations";
 import {
   mockWorkloadResults,
   mockResultSets,
-  mockCalculationSnapshots,
+  mockCalculationGraphs,
   mockWorkloadExecutions,
 } from "../mock/mockWorkloadChain";
 import { mockWorkloadDefinitions } from "../mock/mockWorkloadDefinitions";
@@ -67,7 +67,7 @@ function createDataService(): DataService & {
     getWorkloadResults: async () => mockWorkloadResults,
     getWorkloadSplits: async () => [],
     getResultSets: async () => mockResultSets,
-    getCalculationSnapshots: async () => mockCalculationSnapshots,
+    getCalculationSnapshots: async () => mockCalculationGraphs,
     getWorkloadExecutions: async () => mockWorkloadExecutions,
     getWorkloadDefinition: async (id: string) => {
       const definition = mockWorkloadDefinitions.find((d) => d.id === id);
@@ -92,7 +92,7 @@ function createStatefulDataService(): DataService & {
     getWorkloadResults: async () => mockWorkloadResults,
     getWorkloadSplits: async () => [],
     getResultSets: async () => mockResultSets,
-    getCalculationSnapshots: async () => mockCalculationSnapshots,
+    getCalculationSnapshots: async () => mockCalculationGraphs,
     getWorkloadExecutions: async () => mockWorkloadExecutions,
     getWorkloadDefinition: async (id: string) => {
       const definition = mockWorkloadDefinitions.find((d) => d.id === id);

@@ -3,8 +3,8 @@ import type { AnyCard, UnitCard, WorkloadCard } from "../domain/card/types";
 import type { Relation } from "../domain/relation/types";
 import type { WorkloadResult } from "../domain/workload/types";
 import type { CalculationResult } from "../domain/score/types";
-import { createWorkloadSplit } from "../domain/workload/splitService";
-import { isBusinessRevoked } from "../domain/workload/revocationService";
+import { createWorkloadSplit } from "../domain/workload/split/splitService";
+import { isBusinessRevoked } from "../domain/workload/revocation/revocationService";
 import { MockDataService } from "../services/MockDataService";
 import {
   previewFullPathRevocation,

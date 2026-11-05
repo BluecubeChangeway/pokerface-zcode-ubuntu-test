@@ -9,7 +9,7 @@ import type {
 } from "../domain/score/types";
 import type { WorkloadDefinition, WorkloadExecution } from "../domain/workload/types";
 import type { CalculationSnapshot, ResultSet, WorkloadResult, WorkloadSplit } from "../domain/workload/types";
-import type { SplitProvenanceRecord } from "../domain/workload/splitProvenance";
+import type { SplitProvenanceRecord } from "../domain/workload/provenance/splitProvenance";
 import type { DataService } from "./DataService";
 
 /**

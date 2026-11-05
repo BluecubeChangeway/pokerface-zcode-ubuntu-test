@@ -107,7 +107,9 @@ function compare(
 function fieldValue(node: { field: string; scope?: "currentRow" }, currentRow?: RowRecord, candidateRow?: RowRecord): number | string | null {
   const row = node.scope === "currentRow" ? currentRow : candidateRow ?? currentRow;
   if (!row) return null;
-  const value = row[node.field];
+  const field = node.field;
+  if (!field) return null;
+  const value = row[field];
   return typeof value === "number" || typeof value === "string" ? value : null;
 }
 
@@ -117,13 +119,17 @@ function evaluateFilter(
   currentRow: RowRecord | undefined,
   byId: Map<string, CalculationNode>
 ): RowRecord[] {
-  const input = byId.get(node.input);
+  const inputId = node.input;
+  if (!inputId) {
+    throw new Error(`Filter ${node.id} 缺少 input`);
+  }
+  const input = byId.get(inputId);
 
   let dataset: RowRecord[];
   if (input?.kind === "execution_dataset") {
     dataset = rows;
   } else if (input?.kind === "filter") {
-    dataset = evaluateFilter(input, rows, currentRow, byId);
+    dataset = evaluateFilter(input as FilterNode, rows, currentRow, byId);
   } else {
     throw new Error(`Filter ${node.id} 的输入必须是 execution_dataset 或 filter`);
   }
@@ -147,13 +153,17 @@ function evaluateAggregate(
   byId: Map<string, CalculationNode>,
   warnings: ExecutionWarning[]
 ): number | null {
-  const input = byId.get(node.input);
+  const inputId = node.input;
+  if (!inputId) {
+    throw new Error(`Aggregate ${node.id} 缺少 input`);
+  }
+  const input = byId.get(inputId);
   let dataset: RowRecord[];
 
   if (input?.kind === "execution_dataset") {
     dataset = rows;
   } else if (input?.kind === "filter") {
-    dataset = evaluateFilter(input, rows, currentRow, byId);
+    dataset = evaluateFilter(input as FilterNode, rows, currentRow, byId);
   } else {
     throw new Error(`Aggregate ${node.id} 的输入必须是 execution_dataset 或 filter`);
   }
@@ -201,6 +211,9 @@ function evaluateAggregate(
     case "avg": return values.reduce((a, b) => a + b, 0) / values.length;
     case "min": return Math.min(...values);
     case "max": return Math.max(...values);
+    default:
+      warnings.push({ nodeId: node.id, message: `Aggregate ${node.id} 未知聚合类型: ${node.aggregate}` });
+      return null;
   }
 }
 
@@ -219,17 +232,19 @@ function evaluateScalar(
 
   switch (node.kind) {
     case "constant":
-      value = node.value;
+      value = typeof node.value === "boolean" ? (node.value ? 1 : 0) : (node.value as number | string | null);
       break;
     case "field_ref":
-      value = fieldValue(node, currentRow, undefined);
+      value = fieldValue({ field: node.field ?? "", scope: node.scope as "currentRow" | undefined }, currentRow, undefined);
       break;
     case "aggregate":
-      value = evaluateAggregate(node, rows, currentRow, byId, warnings);
+      value = evaluateAggregate(node as AggregateNode, rows, currentRow, byId, warnings);
       break;
     case "arithmetic": {
-      const left = byId.get(node.left);
-      const right = byId.get(node.right);
+      const leftId = node.left;
+      const rightId = node.right;
+      const left = leftId ? byId.get(leftId) : undefined;
+      const right = rightId ? byId.get(rightId) : undefined;
       const a = left ? evaluateScalar(left, rows, currentRow, byId, warnings, cache) : null;
       const b = right ? evaluateScalar(right, rows, currentRow, byId, warnings, cache) : null;
 
@@ -279,7 +294,9 @@ export function executeSnapshot(
     throw new Error(`Graph 非法，无法执行：${fatal.map((e) => e.message).join("；")}`);
   }
 
-  const { graph, execution } = snapshot;
+  const { graph } = snapshot;
+  const definition = snapshot.definition;
+  const execution = snapshot.execution;
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
   const warnings: ExecutionWarning[] = [...validationErrors.map((e) => ({ message: e.message, nodeId: e.nodeId }))];
   const cache: Cache = new Map();
@@ -287,19 +304,23 @@ export function executeSnapshot(
   // D-116：Execution Dataset = Definition 固定条件 AND Execution 本次条件
   const dataset = formExecutionDataset(
     rows,
-    snapshot.definition.conditions,
-    snapshot.execution.conditions
+    definition?.conditions ?? [],
+    execution?.conditions ?? []
   );
 
   if (dataset.length === 0) {
     return {
-      id: `rs-${snapshot.id}`,
-      snapshotId: snapshot.id,
-      period: execution.period,
-      items: [],
-      status: "missing",
-      warnings: ["Execution Dataset 为 0 行，本次执行无结果（缺失 ≠ 0）"]
-    };
+    id: `rs-${snapshot.id}`,
+    snapshotId: snapshot.id,
+    workloadDefinitionId: snapshot.definition?.id ?? "",
+    workloadExecutionId: snapshot.execution?.id ?? "",
+    period: snapshot.execution?.period,
+    items: [],
+    totalCount: 0,
+    createdAt: new Date().toISOString(),
+    status: "missing",
+    warnings: ["Execution Dataset 为 0 行，本次执行无结果（缺失 ≠ 0）"]
+  };
   }
 
   const outputs = graph.nodes.filter((node): node is OutputColumnNode => node.kind === "output_column");
@@ -338,8 +359,12 @@ export function executeSnapshot(
   return {
     id: `rs-${snapshot.id}`,
     snapshotId: snapshot.id,
-    period: execution.period,
+    workloadDefinitionId: snapshot.definition?.id ?? "",
+    workloadExecutionId: snapshot.execution?.id ?? "",
+    period: snapshot.execution?.period,
     items,
+    totalCount: items.length,
+    createdAt: new Date().toISOString(),
     status: "complete",
     warnings: warnings.map((w) => w.message)
   };
@@ -356,7 +381,8 @@ function makeResultItem(
 
   const dimensions: Record<string, string> = {};
   if (row) {
-    for (const field of snapshot.resultDimensions) {
+    const resultDimensions = snapshot.resultDimensions ?? [];
+    for (const field of resultDimensions) {
       const raw = row[field];
       if (typeof raw === "string" || typeof raw === "number") {
         dimensions[field] = String(raw);
@@ -366,14 +392,16 @@ function makeResultItem(
 
   return {
     id: `ri-${snapshot.id}-${output.id}-${suffix}`,
+    resultSetId: `rs-${snapshot.id}`,
+    name: output.outputName ?? output.name ?? "unknown",
     value: numeric,
     dimensions,
     granularity:
       output.distribution === "perRow"
-        ? "row"
+        ? "perRow"
         : output.distribution === "perDataset"
-          ? "aggregate"
-          : "group",
+          ? "perGroup"
+          : "row",
     outputColumnName: output.name,
     roleInGraph: output.role
   };

@@ -4,7 +4,7 @@ import type { Relation } from "../domain/relation/types";
 import type { WorkloadResult } from "../domain/workload/types";
 import type { Recommendation } from "../domain/recommendation/types";
 import type { ResolutionRecommendation } from "../domain/workload/resolutionTypes";
-import { createWorkloadSplit } from "../domain/workload/splitService";
+import { createWorkloadSplit } from "../domain/workload/split/splitService";
 import { MockDataService } from "../services/MockDataService";
 import {
   previewFullPathRevocation,

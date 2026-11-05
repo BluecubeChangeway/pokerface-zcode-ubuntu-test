@@ -13,7 +13,7 @@ import {
   onWorkloadCardSlotDragStart,
   onWorkloadCardSlotDrop,
   type DataTransferLike,
-} from "../app/dropInteraction";
+} from "../../app/dropInteraction";
 
 /**
  * A-002b 拖出即解除 + 槽间移动路由（用户 2026-10-23 裁定）行为测试：

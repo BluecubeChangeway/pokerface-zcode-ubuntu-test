@@ -1,7 +1,7 @@
 import { canvasStore } from "../stores/canvasStore";
 import type { CanvasCardPlacement } from "../domain/canvas/types";
 import type { AnyCard, CardSlot, CardType, UnitCard, WorkloadCard, BudgetCard } from "../domain/card/types";
-import { isBusinessRevoked } from "../domain/workload/revocationService";
+import { isBusinessRevoked } from "../domain/workload/revocation/revocationService";
 import type { Relation } from "../domain/relation/types";
 
 /**

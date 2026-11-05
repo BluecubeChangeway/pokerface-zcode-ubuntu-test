@@ -20,7 +20,7 @@ import { mockRelations } from "../mock/mockRelations";
 import {
   mockWorkloadResults,
   mockResultSets,
-  mockCalculationSnapshots,
+  mockCalculationGraphs,
   mockWorkloadExecutions,
 } from "../mock/mockWorkloadChain";
 import { mockWorkloadDefinitions } from "../mock/mockWorkloadDefinitions";
@@ -60,7 +60,7 @@ function createStatefulDataService(options?: {
     getWorkloadResults: async () => mockWorkloadResults,
     getWorkloadSplits: async () => [],
     getResultSets: async () => mockResultSets,
-    getCalculationSnapshots: async () => mockCalculationSnapshots,
+    getCalculationSnapshots: async () => mockCalculationGraphs,
     getWorkloadExecutions: async () => mockWorkloadExecutions,
     getWorkloadDefinition: async (id: string) => {
       const definition = mockWorkloadDefinitions.find((d) => d.id === id);

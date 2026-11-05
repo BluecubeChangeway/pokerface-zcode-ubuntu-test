@@ -101,7 +101,7 @@ export const WithSearch: Story = {
   args: {
     placeholder: '搜索选择',
     options: basicOptions,
-    filter: (query, option) => option.label.includes(query) || option.value.includes(query),
+    filter: (query: string, option: { label: string; value: string }) => option.label.includes(query) || option.value.includes(query),
     searchPlaceholder: '搜索水果...',
   },
 };

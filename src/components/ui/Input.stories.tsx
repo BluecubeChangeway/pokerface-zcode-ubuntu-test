@@ -190,7 +190,6 @@ export const TextareaDefault: Story = {
     placeholder: '请输入备注信息...',
     rows: 4,
   },
-  component: Textarea,
 };
 
 export const TextareaWithHint: Story = {
@@ -200,7 +199,6 @@ export const TextareaWithHint: Story = {
     hint: '最多 500 字符',
     rows: 5,
   },
-  component: Textarea,
 };
 
 export const TextareaWithError: Story = {
@@ -211,5 +209,4 @@ export const TextareaWithError: Story = {
     error: '反馈内容至少需要 10 个字符',
     rows: 4,
   },
-  component: Textarea,
 };

@@ -9,7 +9,7 @@ import {
   onBudgetCardDragStart,
   onCardSlotDrop,
   type DataTransferLike,
-} from "../app/dropInteraction";
+} from "../../app/dropInteraction";
 
 /**
  * A-007 预算域解析/推荐 + 反馈联动（用户 2026-10-26 裁定 + 设计批复）行为测试：

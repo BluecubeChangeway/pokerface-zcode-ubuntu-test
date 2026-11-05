@@ -1,6 +1,6 @@
 import type { DataService } from "./DataService";
-import type { WorkloadRevocationImpact, ContinuedUseEvidence } from "../domain/workload/revocationService";
-import { computeFullPathRevocationImpact, isBusinessRevoked } from "../domain/workload/revocationService";
+import type { WorkloadRevocationImpact, ContinuedUseEvidence } from "../domain/workload/revocation/revocationService";
+import { computeFullPathRevocationImpact, isBusinessRevoked } from "../domain/workload/revocation/revocationService";
 import type { Recommendation } from "../domain/recommendation/types";
 import type { ResolutionRecommendation } from "../domain/workload/resolutionTypes";
 import { recommendationStore } from "../stores/recommendationStore";
@@ -9,7 +9,7 @@ import {
   executeFullPathRevocation,
   loadRevocationSnapshot,
   submitRevocation,
-} from "./revocationSubmissionService";
+} from "../domain/workload/revocation/revocationSubmissionService";
 import { resolveWorkloadToUnitAndRecommend } from "./resolutionTrigger";
 
 /**

@@ -3,7 +3,7 @@ import type { BudgetCard } from "../domain/card/types";
 import { getBudgetSummary } from "../domain/budget/budgetService";
 import { recommendationStore } from "../stores/recommendationStore";
 import type { Recommendation } from "../domain/recommendation/types";
-import { isBusinessRevoked } from "../domain/workload/revocationService";
+import { isBusinessRevoked } from "../domain/workload/revocation/revocationService";
 
 /**
  * A-007 预算域解析/推荐（用户 2026-10-26 裁定 + 设计报告批复，2026-10-27 实施）

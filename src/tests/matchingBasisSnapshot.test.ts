@@ -12,7 +12,7 @@ import { mockSlots } from "../mock/mockCards";
 import {
   mockWorkloadResults,
   mockResultSets,
-  mockCalculationSnapshots,
+  mockCalculationGraphs,
   mockWorkloadExecutions,
 } from "../mock/mockWorkloadChain";
 import { mockWorkloadDefinitions } from "../mock/mockWorkloadDefinitions";
@@ -30,7 +30,7 @@ function createStubDataService(resultSets: typeof mockResultSets): DataService {
     getWorkloadResults: async () => mockWorkloadResults,
     getWorkloadSplits: async () => [],
     getResultSets: async () => resultSets,
-    getCalculationSnapshots: async () => mockCalculationSnapshots,
+    getCalculationSnapshots: async () => mockCalculationGraphs,
     getWorkloadExecutions: async () => mockWorkloadExecutions,
     getWorkloadDefinition: async (id: string) => {
       const definition = mockWorkloadDefinitions.find((d) => d.id === id);
@@ -47,7 +47,7 @@ function makeResultFixture(): ResolutionResult {
     targetUnit: { id: WARD1, type: "unit", name: "神经外科一病区" },
     existingResults: mockWorkloadResults,
     resultSets: mockResultSets,
-    snapshots: mockCalculationSnapshots,
+    snapshots: mockCalculationGraphs,
     unitHierarchy: new Map([
       ["unit-neurosurgery", ["unit-neurosurgery-ward-1", "unit-neurosurgery-ward-2", "unit-intervention-room"]],
       ["unit-neurosurgery-ward-1", ["unit-wang-xx", "unit-li-xx", "unit-nursing-team"]],

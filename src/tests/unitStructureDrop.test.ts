@@ -9,7 +9,7 @@ import {
   onUnitCardDragStart,
   onUnitCardSlotDragStart,
   type DataTransferLike,
-} from "../app/dropInteraction";
+} from "../../app/dropInteraction";
 import type { StructureRelationOutcome, DropTriggerResult } from "../services/dropTrigger";
 
 /**

@@ -1,6 +1,6 @@
 import type { DataService } from "./DataService";
 import type { WorkloadResult } from "../domain/workload/types";
-import { matchReusableChildren } from "../domain/workload/splitProvenance";
+import { matchReusableChildren } from "../domain/workload/provenance/splitProvenance";
 
 /**
  * R3 Q3 复用可见性（用户批复：确认面板可见展示，不静默）：

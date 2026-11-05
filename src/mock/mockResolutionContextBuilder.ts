@@ -14,6 +14,7 @@ import { mockRelations } from "./mockRelations";
 import {
   mockWorkloadResults,
   mockWorkloadExecutions,
+  mockCalculationGraphs,
   mockCalculationSnapshots,
   mockResultSets,
 } from "./mockWorkloadChain";

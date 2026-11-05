@@ -101,16 +101,18 @@ export const mockCalculationGraphs: CalculationGraph[] = [
     id: "graph-outpatient-count",
     name: "门诊人次计数",
     rootNodeId: "visits-output",
+    createdAt: new Date().toISOString(),
     nodes: [
-      { id: "ds", kind: "execution_dataset" },
-      { id: "visit-count", kind: "aggregate", aggregate: "count", input: "ds" },
+      { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() },
+      { id: "visit-count", kind: "aggregate", aggregate: "count", input: "ds", createdAt: new Date().toISOString() },
       {
         id: "visits-output",
         kind: "output_column",
         name: "visits",
         role: "final",
         distribution: "perDataset",
-        source: "visit-count"
+        source: "visit-count",
+        createdAt: new Date().toISOString()
       }
     ]
   },
@@ -118,39 +120,44 @@ export const mockCalculationGraphs: CalculationGraph[] = [
     id: "graph-disease-weight",
     name: "病种权重 = 病种组均费 ÷ 全院均费",
     rootNodeId: "weight-output",
+    createdAt: new Date().toISOString(),
     nodes: [
-      { id: "ds", kind: "execution_dataset" },
-      { id: "cost-field", kind: "field_ref", field: "totalCost" },
+      { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() },
+      { id: "cost-field", kind: "field_ref", field: "totalCost", createdAt: new Date().toISOString() },
       {
         id: "same-group-filter",
         kind: "filter",
         input: "ds",
         condition: {
-          left: { id: "cond-left", kind: "field_ref", field: "diseaseGroup" },
+          left: { id: "cond-left", kind: "field_ref", field: "diseaseGroup", createdAt: new Date().toISOString() },
           operator: "=",
-          right: { id: "cond-right", kind: "field_ref", field: "diseaseGroup", scope: "currentRow" }
-        }
+          right: { id: "cond-right", kind: "field_ref", field: "diseaseGroup", scope: "currentRow", createdAt: new Date().toISOString() }
+        },
+        createdAt: new Date().toISOString()
       },
       {
         id: "group-avg",
         kind: "aggregate",
         aggregate: "avg",
         field: "totalCost",
-        input: "same-group-filter"
+        input: "same-group-filter",
+        createdAt: new Date().toISOString()
       },
       {
         id: "overall-avg",
         kind: "aggregate",
         aggregate: "avg",
         field: "totalCost",
-        input: "ds"
+        input: "ds",
+        createdAt: new Date().toISOString()
       },
       {
         id: "weight",
         kind: "arithmetic",
         operator: "/",
         left: "group-avg",
-        right: "overall-avg"
+        right: "overall-avg",
+        createdAt: new Date().toISOString()
       },
       {
         id: "group-avg-output",
@@ -158,7 +165,8 @@ export const mockCalculationGraphs: CalculationGraph[] = [
         name: "diseaseGroupAverage",
         role: "intermediate",
         distribution: "perRow",
-        source: "group-avg"
+        source: "group-avg",
+        createdAt: new Date().toISOString()
       },
       {
         id: "overall-avg-output",
@@ -166,7 +174,8 @@ export const mockCalculationGraphs: CalculationGraph[] = [
         name: "overallAverage",
         role: "intermediate",
         distribution: "perDataset",
-        source: "overall-avg"
+        source: "overall-avg",
+        createdAt: new Date().toISOString()
       },
       {
         id: "weight-output",
@@ -174,7 +183,8 @@ export const mockCalculationGraphs: CalculationGraph[] = [
         name: "diseaseWeight",
         role: "final",
         distribution: "perRow",
-        source: "weight"
+        source: "weight",
+        createdAt: new Date().toISOString()
       }
     ]
   },
@@ -182,16 +192,18 @@ export const mockCalculationGraphs: CalculationGraph[] = [
     id: "graph-discharge-count",
     name: "出院人次计数",
     rootNodeId: "discharges-output",
+    createdAt: new Date().toISOString(),
     nodes: [
-      { id: "ds", kind: "execution_dataset" },
-      { id: "discharge-count", kind: "aggregate", aggregate: "count", input: "ds" },
+      { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() },
+      { id: "discharge-count", kind: "aggregate", aggregate: "count", input: "ds", createdAt: new Date().toISOString() },
       {
         id: "discharges-output",
         kind: "output_column",
         name: "discharges",
         role: "final",
         distribution: "perDataset",
-        source: "discharge-count"
+        source: "discharge-count",
+        createdAt: new Date().toISOString()
       }
     ]
   },
@@ -199,16 +211,18 @@ export const mockCalculationGraphs: CalculationGraph[] = [
     id: "graph-surgery-count",
     name: "手术台次计数",
     rootNodeId: "surgeries-output",
+    createdAt: new Date().toISOString(),
     nodes: [
-      { id: "ds", kind: "execution_dataset" },
-      { id: "surgery-count", kind: "aggregate", aggregate: "count", input: "ds" },
+      { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() },
+      { id: "surgery-count", kind: "aggregate", aggregate: "count", input: "ds", createdAt: new Date().toISOString() },
       {
         id: "surgeries-output",
         kind: "output_column",
         name: "surgeries",
         role: "final",
         distribution: "perDataset",
-        source: "surgery-count"
+        source: "surgery-count",
+        createdAt: new Date().toISOString()
       }
     ]
   },
@@ -216,15 +230,17 @@ export const mockCalculationGraphs: CalculationGraph[] = [
     id: "graph-herbal-sum",
     name: "中草药金额求和",
     rootNodeId: "herbal-output",
+    createdAt: new Date().toISOString(),
     nodes: [
-      { id: "ds", kind: "execution_dataset" },
-      { id: "amount-field", kind: "field_ref", field: "amount" },
+      { id: "ds", kind: "execution_dataset", createdAt: new Date().toISOString() },
+      { id: "amount-field", kind: "field_ref", field: "amount", createdAt: new Date().toISOString() },
       {
         id: "herbal-sum",
         kind: "aggregate",
         aggregate: "sum",
         field: "amount",
-        input: "ds"
+        input: "ds",
+        createdAt: new Date().toISOString()
       },
       {
         id: "herbal-output",
@@ -232,7 +248,8 @@ export const mockCalculationGraphs: CalculationGraph[] = [
         name: "amount",
         role: "final",
         distribution: "perDataset",
-        source: "herbal-sum"
+        source: "herbal-sum",
+        createdAt: new Date().toISOString()
       }
     ]
   }
@@ -255,9 +272,13 @@ export const mockDiseaseWeightSnapshot = createSnapshot(
   diseaseWeightGraph,
   {
     businessFields: ["totalCost", "diseaseGroup", "departmentId"],
-    outputColumns: ["diseaseGroupAverage", "overallAverage", "diseaseWeight"],
+    outputColumns: [
+      { name: "diseaseGroupAverage", type: "number" },
+      { name: "overallAverage", type: "number" },
+      { name: "diseaseWeight", type: "number" }
+    ],
     resultDimensions: ["diseaseGroup", "departmentId"],
-    dataVersionId: "data-version-2025",
+    dataVersion: "data-version-2025",
     note: "2025 全院病种权重基线"
   }
 );
@@ -279,9 +300,9 @@ export const mockOutpatientSnapshot = createSnapshot(
   outpatientGraph,
   {
     businessFields: ["visitType", "departmentId", "doctorId"],
-    outputColumns: ["visits"],
+    outputColumns: [{ name: "visits", type: "number" }],
     resultDimensions: ["departmentId", "doctorId"],
-    dataVersionId: "data-version-2025",
+    dataVersion: "data-version-2025",
     note: "2025 全院门诊人次测算"
   }
 );
@@ -303,9 +324,9 @@ export const mockDischargeSnapshot = createSnapshot(
   dischargeGraph,
   {
     businessFields: ["status", "wardId", "nursingTeamId", "directorId"],
-    outputColumns: ["discharges"],
+    outputColumns: [{ name: "discharges", type: "number" }],
     resultDimensions: ["wardId", "nursingTeamId", "directorId"],
-    dataVersionId: "data-version-2025",
+    dataVersion: "data-version-2025",
     note: "2025 全院出院人次测算"
   }
 );
@@ -324,9 +345,9 @@ export const mockWangOutpatientSnapshot = createSnapshot(
   outpatientGraph,
   {
     businessFields: ["visitType", "departmentId", "doctorId"],
-    outputColumns: ["visits"],
+    outputColumns: [{ name: "visits", type: "number" }],
     resultDimensions: ["departmentId", "doctorId"],
-    dataVersionId: "data-version-2025",
+    dataVersion: "data-version-2025",
     note: "王XX 门诊人次 (2025-10~11 实际发生)"
   }
 );
@@ -345,9 +366,9 @@ export const mockLiOutpatientSnapshot = createSnapshot(
   outpatientGraph,
   {
     businessFields: ["visitType", "departmentId", "doctorId"],
-    outputColumns: ["visits"],
+    outputColumns: [{ name: "visits", type: "number" }],
     resultDimensions: ["departmentId", "doctorId"],
-    dataVersionId: "data-version-2025",
+    dataVersion: "data-version-2025",
     note: "李XX 门诊人次 (2025 全年)"
   }
 );
@@ -369,9 +390,9 @@ export const mockSurgeryCountSnapshot = createSnapshot(
   surgeryGraph,
   {
     businessFields: ["surgeryLevel", "surgeonId"],
-    outputColumns: ["surgeries"],
+    outputColumns: [{ name: "surgeries", type: "number" }],
     resultDimensions: ["surgeonId"],
-    dataVersionId: "data-version-2025",
+    dataVersion: "data-version-2025",
     note: "2025 手术台次统计 (III/IV 级)"
   }
 );
@@ -393,14 +414,14 @@ export const mockHerbalAmountSnapshot = createSnapshot(
   herbalGraph,
   {
     businessFields: ["drugCategory", "departmentId", "amount"],
-    outputColumns: ["amount"],
+    outputColumns: [{ name: "amount", type: "number" }],
     resultDimensions: ["departmentId"],
-    dataVersionId: "data-version-2025",
+    dataVersion: "data-version-2025",
     note: "2025 中草药金额统计"
   }
 );
 
-export const mockCalculationSnapshots: CalculationSnapshot[] = [
+export const mockCalculationSnapshots: import("../domain/workload/types").CalculationSnapshot[] = [
   mockDiseaseWeightSnapshot,
   mockOutpatientSnapshot,
   mockDischargeSnapshot,
@@ -410,52 +431,159 @@ export const mockCalculationSnapshots: CalculationSnapshot[] = [
   mockHerbalAmountSnapshot,
 ];
 
-/** 病种权重 ResultSet：由 executeSnapshot 推出的参考结果（值与 GraphDiseaseCaseRows 一致） */
+const diseaseWeightDefinitionForResultSet = mockWorkloadDefinitions.find(
+  (item) => item.id === "def-disease-weight"
+)!;
+const diseaseWeightExecutionForResultSet = mockWorkloadExecutions.find(
+  (item) => item.id === "exec-disease-weight-2025"
+)!;
+const diseaseWeightGraphForResultSet = mockCalculationGraphs.find(
+  (item) => item.id === "graph-disease-weight"
+)!;
+
 export const mockDiseaseWeightResultSet: ResultSet = {
   id: "rs-snapshot-disease-weight-2025",
   snapshotId: "snapshot-disease-weight-2025",
-  period: mockDiseaseWeightSnapshot.execution.period,
+  workloadDefinitionId: "def-disease-weight",
+  workloadExecutionId: "exec-disease-weight-2025",
+  period: mockDiseaseWeightSnapshot.execution?.period,
+  totalCount: 4,
+  createdAt: new Date().toISOString(),
   items: [
-    // 行级：M78.1 组均 2000、A00.0 组均 2300、全院总均 2150（正确分母）
-    { id: "ri-dw-c1", value: 2000 / 2150, dimensions: { diseaseGroup: "M78.1", departmentId: "unit-orthopedics" }, granularity: "row", outputColumnName: "diseaseWeight", roleInGraph: "final" },
-    { id: "ri-dw-c2", value: 2000 / 2150, dimensions: { diseaseGroup: "M78.1", departmentId: "unit-orthopedics" }, granularity: "row", outputColumnName: "diseaseWeight", roleInGraph: "final" },
-    { id: "ri-dw-c3", value: 2000 / 2150, dimensions: { diseaseGroup: "M78.1", departmentId: "unit-neurosurgery" }, granularity: "row", outputColumnName: "diseaseWeight", roleInGraph: "final" },
-    { id: "ri-dw-c4", value: 2300 / 2150, dimensions: { diseaseGroup: "A00.0", departmentId: "unit-orthopedics" }, granularity: "row", outputColumnName: "diseaseWeight", roleInGraph: "final" },
-    { id: "ri-dw-c5", value: 2300 / 2150, dimensions: { diseaseGroup: "A00.0", departmentId: "unit-neurosurgery" }, granularity: "row", outputColumnName: "diseaseWeight", roleInGraph: "final" },
-    { id: "ri-dw-c6", value: 2300 / 2150, dimensions: { diseaseGroup: "A00.0", departmentId: "unit-neurosurgery" }, granularity: "row", outputColumnName: "diseaseWeight", roleInGraph: "final" },
-    // 中间节点（追溯用，不允许成为 Workload Result）
-    { id: "ri-dw-i1", value: 2000, dimensions: { diseaseGroup: "M78.1" }, granularity: "row", outputColumnName: "diseaseGroupAverage", roleInGraph: "intermediate" },
-    { id: "ri-dw-i2", value: 2150, dimensions: {}, granularity: "aggregate", outputColumnName: "overallAverage", roleInGraph: "intermediate" },
-    // 汇总（骨科病种总权重 = 2*0.9302 + 1.0698）
-    { id: "ri-dw-orth-total", value: (2000 / 2150) * 2 + 2300 / 2150, dimensions: { departmentId: "unit-orthopedics" }, granularity: "aggregate", outputColumnName: undefined, roleInGraph: "final" }
+    {
+      id: "ri-dw-orth-total",
+      resultSetId: "rs-snapshot-disease-weight-2025",
+      name: "骨科病种总权重",
+      value: 2000 / 2150,
+      dimensions: { diseaseGroup: "M78.1", departmentId: "unit-orthopedics" },
+      outputColumnName: "diseaseWeight",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-dw-neuro-total",
+      resultSetId: "rs-snapshot-disease-weight-2025",
+      name: "神经外科病种总权重",
+      value: 2200 / 2150,
+      dimensions: { diseaseGroup: "M78.1", departmentId: "unit-neurosurgery" },
+      outputColumnName: "diseaseWeight",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-dw-cholera-total",
+      resultSetId: "rs-snapshot-disease-weight-2025",
+      name: "霍乱病种总权重",
+      value: 2500 / 2150,
+      dimensions: { diseaseGroup: "A00.0", departmentId: "unit-orthopedics" },
+      outputColumnName: "diseaseWeight",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-dw-neuro-a00",
+      resultSetId: "rs-snapshot-disease-weight-2025",
+      name: "神经外科霍乱权重",
+      value: 2300 / 2150,
+      dimensions: { diseaseGroup: "A00.0", departmentId: "unit-neurosurgery" },
+      outputColumnName: "diseaseWeight",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
-/** 门诊人次 ResultSet (2025 测算期间) */
 export const mockOutpatientResultSet: ResultSet = {
   id: "rs-snapshot-outpatient-2025",
   snapshotId: "snapshot-outpatient-2025",
-  sourceDataObjectId: "data-object-outpatient",
-  period: mockOutpatientSnapshot.execution.period,
+  workloadDefinitionId: "def-outpatient-visits",
+  workloadExecutionId: "exec-outpatient-2025",
+  period: mockOutpatientSnapshot.execution?.period,
+  totalCount: 3,
+  createdAt: new Date().toISOString(),
   items: [
-    { id: "ri-outpatient-neurosurgery", value: 1260, dimensions: { departmentId: "unit-neurosurgery" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
-    { id: "ri-outpatient-orthopedics", value: 980, dimensions: { departmentId: "unit-orthopedics" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
-    { id: "ri-outpatient-emergency", value: 2100, dimensions: { departmentId: "unit-emergency" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
-    { id: "ri-outpatient-internal", value: 1400, dimensions: { departmentId: "unit-internal-medicine" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
-    { id: "ri-outpatient-total", value: 4002, dimensions: {}, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
+    {
+      id: "ri-outpatient-neurosurgery",
+      resultSetId: "rs-snapshot-outpatient-2025",
+      name: "神经外科门诊人次",
+      value: 1260,
+      dimensions: { departmentId: "unit-neurosurgery", doctorId: "unit-li-xx" },
+      outputColumnName: "visits",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-outpatient-internal",
+      resultSetId: "rs-snapshot-outpatient-2025",
+      name: "内科门诊人次",
+      value: 1520,
+      dimensions: { departmentId: "unit-internal-medicine", doctorId: "unit-wang-xx" },
+      outputColumnName: "visits",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-outpatient-orthopedics",
+      resultSetId: "rs-snapshot-outpatient-2025",
+      name: "骨科门诊人次",
+      value: 980,
+      dimensions: { departmentId: "unit-orthopedics", doctorId: "unit-wang-xx" },
+      outputColumnName: "visits",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
-/** 出院人次 ResultSet (2025 测算期间) */
 export const mockDischargeResultSet: ResultSet = {
   id: "rs-snapshot-discharge-2025",
   snapshotId: "snapshot-discharge-2025",
-  period: mockDischargeSnapshot.execution.period,
+  workloadDefinitionId: "def-discharge-visits",
+  workloadExecutionId: "exec-discharge-2025",
+  period: mockDischargeSnapshot.execution?.period,
+  totalCount: 4,
+  createdAt: new Date().toISOString(),
   items: [
-    { id: "ri-discharge-orthopedics", value: 380, dimensions: { wardId: "unit-orthopedics-ward" }, granularity: "aggregate", outputColumnName: "discharges", roleInGraph: "final" },
-    { id: "ri-discharge-neurosurgery", value: 250, dimensions: { wardId: "unit-neurosurgery-ward-1" }, granularity: "aggregate", outputColumnName: "discharges", roleInGraph: "final" },
-    { id: "ri-discharge-emergency", value: 120, dimensions: { wardId: "unit-emergency-ward" }, granularity: "aggregate", outputColumnName: "discharges", roleInGraph: "final" },
-    { id: "ri-discharge-total", value: 830, dimensions: {}, granularity: "aggregate", outputColumnName: "discharges", roleInGraph: "final" },
+    {
+      id: "ri-discharge-orthopedics",
+      resultSetId: "rs-snapshot-discharge-2025",
+      name: "骨科出院人次",
+      value: 380,
+      dimensions: { wardId: "unit-orthopedics-ward" },
+      outputColumnName: "discharges",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-discharge-neurosurgery",
+      resultSetId: "rs-snapshot-discharge-2025",
+      name: "神经外科出院人次",
+      value: 250,
+      dimensions: { wardId: "unit-neurosurgery-ward-1" },
+      outputColumnName: "discharges",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-discharge-emergency",
+      resultSetId: "rs-snapshot-discharge-2025",
+      name: "急诊出院人次",
+      value: 120,
+      dimensions: { wardId: "unit-emergency-ward" },
+      outputColumnName: "discharges",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    },
+    {
+      id: "ri-discharge-total",
+      resultSetId: "rs-snapshot-discharge-2025",
+      name: "全院出院人次",
+      value: 830,
+      dimensions: {},
+      outputColumnName: "discharges",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
@@ -463,9 +591,22 @@ export const mockDischargeResultSet: ResultSet = {
 export const mockWangOutpatientResultSet: ResultSet = {
   id: "rs-snapshot-outpatient-wang",
   snapshotId: "snapshot-outpatient-wang",
-  period: mockWangOutpatientSnapshot.execution.period,
+  workloadDefinitionId: "def-wang-outpatient",
+  workloadExecutionId: "exec-wang-outpatient",
+  period: mockWangOutpatientSnapshot.execution?.period,
+  totalCount: 1,
+  createdAt: new Date().toISOString(),
   items: [
-    { id: "ri-wang-outpatient", value: 200, dimensions: { departmentId: "unit-neurosurgery", doctorId: "unit-wang-xx" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
+    {
+      id: "ri-wang-outpatient",
+      resultSetId: "rs-snapshot-outpatient-wang",
+      name: "王XX门诊人次",
+      value: 200,
+      dimensions: { departmentId: "unit-neurosurgery", doctorId: "unit-wang-xx" },
+      outputColumnName: "visits",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
@@ -473,9 +614,22 @@ export const mockWangOutpatientResultSet: ResultSet = {
 export const mockLiOutpatientResultSet: ResultSet = {
   id: "rs-snapshot-outpatient-li",
   snapshotId: "snapshot-outpatient-li",
-  period: mockLiOutpatientSnapshot.execution.period,
+  workloadDefinitionId: "def-li-outpatient",
+  workloadExecutionId: "exec-li-outpatient",
+  period: mockLiOutpatientSnapshot.execution?.period,
+  totalCount: 1,
+  createdAt: new Date().toISOString(),
   items: [
-    { id: "ri-li-outpatient", value: 220, dimensions: { departmentId: "unit-neurosurgery", doctorId: "unit-li-xx" }, granularity: "aggregate", outputColumnName: "visits", roleInGraph: "final" },
+    {
+      id: "ri-li-outpatient",
+      resultSetId: "rs-snapshot-outpatient-li",
+      name: "李XX门诊人次",
+      value: 220,
+      dimensions: { departmentId: "unit-neurosurgery", doctorId: "unit-li-xx" },
+      outputColumnName: "visits",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
@@ -483,9 +637,22 @@ export const mockLiOutpatientResultSet: ResultSet = {
 export const mockSurgeryCountResultSet: ResultSet = {
   id: "rs-snapshot-surgery-count",
   snapshotId: "snapshot-surgery-count",
-  period: mockSurgeryCountSnapshot.execution.period,
+  workloadDefinitionId: "def-surgery-count",
+  workloadExecutionId: "exec-surgery-count-2025",
+  period: mockSurgeryCountSnapshot.execution?.period,
+  totalCount: 1,
+  createdAt: new Date().toISOString(),
   items: [
-    { id: "ri-surgery-total", value: 120, dimensions: {}, granularity: "aggregate", outputColumnName: "surgeries", roleInGraph: "final" },
+    {
+      id: "ri-surgery-total",
+      resultSetId: "rs-snapshot-surgery-count",
+      name: "手术台次总计",
+      value: 120,
+      dimensions: {},
+      outputColumnName: "surgeries",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
@@ -493,9 +660,22 @@ export const mockSurgeryCountResultSet: ResultSet = {
 export const mockHerbalAmountResultSet: ResultSet = {
   id: "rs-snapshot-herbal-amount",
   snapshotId: "snapshot-herbal-amount",
-  period: mockHerbalAmountSnapshot.execution.period,
+  workloadDefinitionId: "def-herbal-amount",
+  workloadExecutionId: "exec-herbal-amount-2025",
+  period: mockHerbalAmountSnapshot.execution?.period,
+  totalCount: 1,
+  createdAt: new Date().toISOString(),
   items: [
-    { id: "ri-herbal-total", value: 360000, dimensions: {}, granularity: "aggregate", outputColumnName: "amount", roleInGraph: "final" },
+    {
+      id: "ri-herbal-total",
+      resultSetId: "rs-snapshot-herbal-amount",
+      name: "中草药金额总计",
+      value: 360000,
+      dimensions: {},
+      outputColumnName: "amount",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
@@ -503,9 +683,22 @@ export const mockHerbalAmountResultSet: ResultSet = {
 export const mockDiseaseWeightTotalResultSet: ResultSet = {
   id: "rs-snapshot-disease-weight-total",
   snapshotId: "snapshot-disease-weight-2025",
-  period: mockDiseaseWeightSnapshot.execution.period,
+  workloadDefinitionId: "def-disease-weight",
+  workloadExecutionId: "exec-disease-weight-2025",
+  period: mockDiseaseWeightSnapshot.execution?.period,
+  totalCount: 1,
+  createdAt: new Date().toISOString(),
   items: [
-    { id: "ri-dw-total", value: 2000 / 2150, dimensions: { diseaseGroup: "M78.1" }, granularity: "aggregate", outputColumnName: "diseaseWeight", roleInGraph: "final" },
+    {
+      id: "ri-dw-total",
+      resultSetId: "rs-snapshot-disease-weight-2025",
+      name: "病种权重总值",
+      value: 2000 / 2150,
+      dimensions: { diseaseGroup: "M78.1" },
+      outputColumnName: "diseaseWeight",
+      roleInGraph: "final",
+      granularity: "aggregate"
+    }
   ]
 };
 
@@ -570,51 +763,19 @@ export const mockWorkloadResults: WorkloadResult[] = [
     dimensions: { departmentId: "unit-neurosurgery", doctorId: "unit-li-xx" }
   },
   {
-    id: "workload-result-outpatient-total",
-    resultSetId: "rs-snapshot-outpatient-2025",
-    resultItemId: "ri-outpatient-total",
-    name: "全院门诊人次",
-    value: 4002,
-    dimensions: {}
-  },
-  {
-    id: "workload-result-internal-outpatient",
-    resultSetId: "rs-snapshot-outpatient-2025",
-    resultItemId: "ri-outpatient-internal",
-    name: "内科门诊人次",
-    value: 1400,
-    dimensions: { departmentId: "unit-internal-medicine" }
-  },
-  {
-    id: "workload-result-discharge-total",
-    resultSetId: "rs-snapshot-discharge-2025",
-    resultItemId: "ri-discharge-total",
-    name: "全院出院人次",
-    value: 830,
-    dimensions: {}
-  },
-  {
-    id: "workload-result-disease-weight",
-    resultSetId: "rs-snapshot-disease-weight-total",
-    resultItemId: "ri-dw-total",
-    name: "病种权重 (M78.1 代表值)",
-    value: 2000 / 2150,
-    dimensions: { diseaseGroup: "M78.1" }
-  },
-  {
     id: "workload-result-surgery-count",
     resultSetId: "rs-snapshot-surgery-count",
     resultItemId: "ri-surgery-total",
-    name: "手术台次",
+    name: "手术台次总计",
     value: 120,
-    dimensions: {}
+    dimensions: { surgeonId: "unit-surgeon-xx" }
   },
   {
     id: "workload-result-herbal-amount",
     resultSetId: "rs-snapshot-herbal-amount",
     resultItemId: "ri-herbal-total",
-    name: "中草药金额",
+    name: "中草药金额总计",
     value: 360000,
-    dimensions: {}
+    dimensions: { departmentId: "unit-pharmacy" }
   }
 ];

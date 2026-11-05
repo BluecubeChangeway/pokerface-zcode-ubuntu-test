@@ -11,10 +11,9 @@ function deepClone<T>(value: T): T {
 
 export interface SnapshotExtras {
   businessFields: string[];
-  outputColumns: string[];
+  outputColumns: Array<{ name: string; type: string }>;
   resultDimensions: string[];
-  modelVersionId?: string;
-  dataVersionId?: string;
+  dataVersion?: string;
   note?: string;
 }
 
@@ -30,12 +29,11 @@ export function createSnapshot(
     definition: deepClone(definition),
     execution: deepClone(execution),
     graph: deepClone(graph),
-    businessFields: [...extras.businessFields],
     outputColumns: [...extras.outputColumns],
     resultDimensions: [...extras.resultDimensions],
-    modelVersionId: extras.modelVersionId,
-    dataVersionId: extras.dataVersionId,
-    note: extras.note
+    dataVersion: extras.dataVersion,
+    note: extras.note,
+    createdAt: new Date().toISOString()
   };
 }
 

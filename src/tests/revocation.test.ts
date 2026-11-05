@@ -4,15 +4,15 @@ import type { Relation } from "../domain/relation/types";
 import type { WorkloadResult, WorkloadSplit } from "../domain/workload/types";
 import type { CalculationResult } from "../domain/score/types";
 import type { Recommendation, UserDecision } from "../domain/recommendation/types";
-import { createWorkloadSplit } from "../domain/workload/splitService";
+import { createWorkloadSplit } from "../domain/workload/split/splitService";
 import {
   isBusinessRevoked,
   isWorkloadSplitRecordRevoked,
-} from "../domain/workload/revocationService";
+} from "../domain/workload/revocation/revocationService";
 import {
   executeSplitLayerRevocation,
   executeFullPathRevocation,
-} from "../services/revocationSubmissionService";
+} from "../domain/workload/revocation/revocationSubmissionService";
 import {
   executeUserDecision,
   type ActionExecutorContext,

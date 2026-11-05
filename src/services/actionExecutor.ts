@@ -1,21 +1,22 @@
 import type { Relation } from "../domain/relation/types";
-import type { WorkloadResult, WorkloadSplit } from "../domain/workload/types";
-import type { WorkloadCard } from "../domain/card/types";
+import type { WorkloadResult, WorkloadSplit, Period } from "../domain/workload/types";
+import type { WorkloadCard, AnyCard } from "../domain/card/types";
 import type { Recommendation, UserDecision } from "../domain/recommendation/types";
-import type { SplitProvenanceRecord } from "../domain/workload/splitProvenance";
+import type { SplitProvenanceRecord } from "../domain/workload/provenance/splitProvenance";
 import { createRelation } from "../domain/relation/relationService";
-import { createWorkloadSplit, type SplitExecutionInput, type SplitExecutionResult } from "../domain/workload/splitService";
+import { createWorkloadSplit, type SplitExecutionInput, type SplitExecutionResult } from "../domain/workload/split/splitService";
 import {
   batchSplitId,
   determineChildIdOwnership,
   workloadResultContentEquals,
-} from "../domain/workload/splitService";
-import { matchReusableChildren } from "../domain/workload/splitProvenance";
-import { executeUnitSplit } from "./unitSplitService";
+} from "../domain/workload/split/splitService";
+import { matchReusableChildren } from "../domain/workload/provenance/splitProvenance";
+
+import { executeUnitSplit } from "../domain/workload/split/unitSplitService";
 import {
   isBusinessRevoked,
   isWorkloadSplitRecordRevoked,
-} from "../domain/workload/revocationService";
+} from "../domain/workload/revocation/revocationService";
 import { DefaultCapabilityProvider } from "./capabilityProvider";
 import { v4 as uuidv4 } from "uuid";
 import type { DataService } from "./DataService";
@@ -82,7 +83,7 @@ export interface ActionExecutorResult {
   /** R3 溯源复用的子结果 ID 列表（跨批次复用，D-157 规则 B：同条件跨推荐复用） */
   r3ReusedChildResultIds?: string[];
   /** unit_split 确认创建的 UnitCard 列表 */
-  createdCards?: { id: string; type: string; name: string; configurationState: string }[];
+  createdCards?: AnyCard[];
   /** unit_split 确认创建的 structure Relation ID 列表 */
   relationIds?: string[];
   /** 错误信息（失败时） */
@@ -559,13 +560,14 @@ export async function executeSplitWorkload(
   }
 
   // 构建 SplitExecutionInput，注入复用的 child ID
-  const childrenForSplit = splitParameters.children.map((child: { id?: string; name: string; value: number | null; dimensions: Record<string, string>; resultSetId: string; resultItemId: string }, index: number) => ({
+  const childrenForSplit = splitParameters.children.map((child: { id?: string; name: string; value: number | null; dimensions: Record<string, string>; resultSetId: string; resultItemId: string; period?: Period }, index: number) => ({
     id: reusableChildIds[index] ?? child.id, // 优先使用溯源匹配的既有 ID，其次用显式传入的 ID
     name: child.name,
     value: child.value,
     dimensions: child.dimensions,
     resultSetId: child.resultSetId,
-    resultItemId: child.resultItemId
+    resultItemId: child.resultItemId,
+    period: child.period ?? parentResult.period
   }));
   
   const splitInput: SplitExecutionInput = {
@@ -1054,7 +1056,14 @@ export async function executeUserDecision(
         createdRelations: [],
         createdWorkloadResults: [],
         createdWorkloadSplits: [],
-        createdCards: [{ id: unitSplitResult.createdCardId, type: 'unit', name: unitSplitPayload.newUnitName, configurationState: 'configured' }],
+        createdCards: [{ 
+          id: unitSplitResult.createdCardId, 
+          type: 'unit', 
+          name: unitSplitPayload.newUnitName, 
+          unitKind: unitSplitPayload.newUnitKind as "person" | "department" | "team" | "business_unit" | "custom",
+          configurationState: 'configured',
+          attributes: {}
+        }],
         relationIds: [unitSplitResult.relationId],
       };
     case "confirm_aggregate":

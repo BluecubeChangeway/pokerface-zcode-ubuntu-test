@@ -29,7 +29,7 @@ export interface TabItem {
   tooltip?: string;
 }
 
-export interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface TabsProps {
   /** 标签项列表 */
   items: TabItem[];
   /** 当前激活标签（受控） */
@@ -41,7 +41,7 @@ export interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
   /** 尺寸 */
   size?: 'sm' | 'md' | 'lg';
   /** 方向 */
-  orientation?: 'horizontal' | 'vertical' | undefined;
+  orientation?: 'horizontal' | 'vertical';
   /** 激活回调 */
   onValueChange?: (value: string) => void;
   /** 是否懒加载内容 */
@@ -50,6 +50,8 @@ export interface TabsProps extends React.HTMLAttributes<HTMLDivElement> {
   fullWidth?: boolean;
   /** 类名 */
   className?: string;
+  /** 标签内容渲染 */
+  children?: React.ReactNode;
 }
 
 export interface TabsListProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -67,7 +69,7 @@ export interface TabsTriggerProps extends React.ButtonHTMLAttributes<HTMLButtonE
 export interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
   value: string;
   children?: React.ReactNode;
-  forceMount?: boolean;
+  forceMount?: true;
 }
 
 // ============================================
@@ -135,7 +137,7 @@ export function Tabs({
     <TabsPrimitive.Root
       value={currentValue}
       onValueChange={handleValueChange}
-      orientation={orientation}
+      orientation={orientation as 'horizontal' | 'vertical'}
       dir="ltr"
       activationMode="automatic"
       className={cn('w-full', fullWidth && 'w-full', className)}
@@ -187,7 +189,7 @@ export function Tabs({
         <TabsPrimitive.Content
           key={item.value}
           value={item.value}
-          forceMount={!lazy}
+          forceMount={lazy ? undefined : true}
           className={cn(
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
             'mt-4',
@@ -253,7 +255,7 @@ export const TabsTrigger = forwardRef<HTMLButtonElement, TabsTriggerProps>(
 TabsTrigger.displayName = 'TabsTrigger';
 
 export const TabsContent = forwardRef<HTMLDivElement, TabsContentProps>(
-  ({ className, value, forceMount, children, ...props }, ref) => (
+  ({ className, value, forceMount = true, children, ...props }, ref) => (
     <TabsPrimitive.Content
       ref={ref}
       value={value}

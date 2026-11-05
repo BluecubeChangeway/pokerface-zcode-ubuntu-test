@@ -1,6 +1,6 @@
 export type Phase = "measurement" | "calculation" | "comparison";
 
-export type PeriodMode = "actual" | "coverage" | Phase;
+export type PeriodMode = "actual" | "coverage" | "relative" | "rolling" | Phase;
 
 export interface Period {
   start: string;
